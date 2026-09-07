@@ -37,6 +37,15 @@ export class DrawingCanvas {
     this.strokeWidth = 4;
     this.points = [];
 
+    // Apple Pencil / Touch Gesture Mode
+    this.pencilOnlyMode = localStorage.getItem('notecraft_pencil_only') !== 'false';
+    this.isTwoFingerPanning = false;
+    this.isOneFingerPanning = false;
+    this.touchStartPanY = 0;
+    this.touchStartPanX = 0;
+    this.scrollStartTop = 0;
+    this.scrollStartLeft = 0;
+
     // History stack for Undo / Redo
     this.history = [];
     this.redoStack = [];
@@ -96,12 +105,11 @@ export class DrawingCanvas {
     this.canvas.addEventListener('pointercancel', (e) => this.onPointerCancel(e));
     this.canvas.addEventListener('lostpointercapture', (e) => this.onPointerCancel(e));
 
-    this.canvas.addEventListener('touchstart', (e) => {
-      if (e.target === this.canvas) e.preventDefault();
-    }, { passive: false });
-    this.canvas.addEventListener('touchmove', (e) => {
-      if (e.target === this.canvas) e.preventDefault();
-    }, { passive: false });
+    // Touch gesture handling: 2-finger pan (always) and 1-finger pan (in pencilOnlyMode)
+    this.canvas.addEventListener('touchstart', (e) => this.onTouchStart(e), { passive: false });
+    this.canvas.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
+    this.canvas.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
+    this.canvas.addEventListener('touchcancel', (e) => this.onTouchEnd(e), { passive: false });
 
     // Sync canvas resolution if container changes size
     const contentLayers = document.getElementById('note-content-layers');
@@ -117,6 +125,99 @@ export class DrawingCanvas {
         }
       });
       ro.observe(contentLayers);
+    }
+  }
+
+  onTouchStart(e) {
+    if (e.touches.length >= 2) {
+      // Two-finger touch: abort any in-progress drawing immediately and start viewport scrolling
+      this.cancelActiveStroke();
+      this.isTwoFingerPanning = true;
+      this.isOneFingerPanning = false;
+
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      this.touchStartPanY = (t1.clientY + t2.clientY) / 2;
+      this.touchStartPanX = (t1.clientX + t2.clientX) / 2;
+      const viewport = document.getElementById('note-viewport');
+      this.scrollStartTop = viewport ? viewport.scrollTop : 0;
+      this.scrollStartLeft = viewport ? viewport.scrollLeft : 0;
+      e.preventDefault();
+      return;
+    }
+
+    if (this.pencilOnlyMode && e.touches.length === 1 && !this.isDrawing) {
+      // In pencil-only mode, single finger touch scrolls the note paper
+      this.isOneFingerPanning = true;
+      this.touchStartPanY = e.touches[0].clientY;
+      this.touchStartPanX = e.touches[0].clientX;
+      const viewport = document.getElementById('note-viewport');
+      this.scrollStartTop = viewport ? viewport.scrollTop : 0;
+      this.scrollStartLeft = viewport ? viewport.scrollLeft : 0;
+    }
+  }
+
+  onTouchMove(e) {
+    if (this.isTwoFingerPanning && e.touches.length >= 2) {
+      e.preventDefault();
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const currentPanY = (t1.clientY + t2.clientY) / 2;
+      const currentPanX = (t1.clientX + t2.clientX) / 2;
+      const deltaY = this.touchStartPanY - currentPanY;
+      const deltaX = this.touchStartPanX - currentPanX;
+
+      const viewport = document.getElementById('note-viewport');
+      if (viewport) {
+        viewport.scrollTop = this.scrollStartTop + deltaY;
+        viewport.scrollLeft = this.scrollStartLeft + deltaX;
+      }
+      return;
+    }
+
+    if (this.pencilOnlyMode && this.isOneFingerPanning && e.touches.length === 1 && !this.isDrawing) {
+      e.preventDefault();
+      const currentPanY = e.touches[0].clientY;
+      const currentPanX = e.touches[0].clientX;
+      const deltaY = this.touchStartPanY - currentPanY;
+      const deltaX = this.touchStartPanX - currentPanX;
+
+      const viewport = document.getElementById('note-viewport');
+      if (viewport) {
+        viewport.scrollTop = this.scrollStartTop + deltaY;
+        viewport.scrollLeft = this.scrollStartLeft + deltaX;
+      }
+      return;
+    }
+
+    if (this.isDrawing) {
+      e.preventDefault();
+    }
+  }
+
+  onTouchEnd(e) {
+    if (e.touches.length < 2) {
+      this.isTwoFingerPanning = false;
+    }
+    if (e.touches.length === 0) {
+      this.isOneFingerPanning = false;
+    }
+  }
+
+  cancelActiveStroke() {
+    if (this.isDrawing) {
+      this.isDrawing = false;
+      this.activePointerId = null;
+      if (this.activeCtx && this.activeCanvas) {
+        this.activeCtx.save();
+        this.activeCtx.setTransform(1, 0, 0, 1, 0, 0);
+        this.activeCtx.clearRect(0, 0, this.activeCanvas.width, this.activeCanvas.height);
+        this.activeCtx.restore();
+      }
+      if (this.points.length <= 1 && this.history.length > 0) {
+        this.history.pop();
+      }
+      this.points = [];
     }
   }
 
@@ -145,6 +246,13 @@ export class DrawingCanvas {
 
   onPointerDown(e) {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
+    if (this.isTwoFingerPanning) return;
+
+    // Pencil Only Mode: Only Apple Pencil ('pen') or mouse are allowed to draw
+    if (this.pencilOnlyMode && e.pointerType === 'touch') {
+      return; // Finger does not draw!
+    }
+
     if (this.isDrawing) return;
 
     this.activePointerId = e.pointerId;
@@ -466,6 +574,17 @@ export class DrawingCanvas {
         if (confirm('캔버스에 작성된 모든 필기를 지우시겠습니까?')) {
           this.clear();
         }
+      });
+    }
+
+    // Apple Pencil Only mode toggle button
+    const pencilOnlyBtn = document.getElementById('btn-pencil-only');
+    if (pencilOnlyBtn) {
+      pencilOnlyBtn.classList.toggle('active', this.pencilOnlyMode);
+      pencilOnlyBtn.addEventListener('click', () => {
+        this.pencilOnlyMode = !this.pencilOnlyMode;
+        localStorage.setItem('notecraft_pencil_only', this.pencilOnlyMode);
+        pencilOnlyBtn.classList.toggle('active', this.pencilOnlyMode);
       });
     }
   }

@@ -61,6 +61,54 @@
   border: 1px solid rgba(59, 130, 246, 0.4);
 }
 
+/* Pencil Only Mode Button */
+.pencil-mode-group {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+#btn-pencil-only {
+  width: auto;
+  height: 34px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-sidebar);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+#btn-pencil-only:hover {
+  background-color: var(--bg-sidebar-hover);
+  color: var(--text-primary);
+}
+
+#btn-pencil-only.active {
+  background-color: var(--accent-light);
+  color: var(--accent-primary);
+  border-color: rgba(59, 130, 246, 0.4);
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .pencil-mode-label {
+    display: none;
+  }
+  #btn-pencil-only {
+    padding: 0 8px;
+    width: 34px;
+    justify-content: center;
+  }
+}
+
 /* Color Swatches */
 .color-swatch {
   width: 22px;
