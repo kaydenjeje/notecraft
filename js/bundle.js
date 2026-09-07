@@ -244,6 +244,8 @@
       this.bindGlobalEvents();
       this.bindSlashMenuEvents();
       this.bindFormatToolbarEvents();
+      this.bindPasteAndDrop();
+      this.bindUploadInputs();
     }
 
     bindGlobalEvents() {
@@ -259,6 +261,171 @@
       document.addEventListener('selectionchange', () => {
         this.handleSelectionChange();
       });
+    }
+
+    bindPasteAndDrop() {
+      // 1. Clipboard Paste (Ctrl+V) for screenshots and copied images
+      document.addEventListener('paste', (e) => {
+        if (!e.clipboardData || !e.clipboardData.items) return;
+        const items = e.clipboardData.items;
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type.indexOf('image') !== -1) {
+            e.preventDefault();
+            const blob = items[i].getAsFile();
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              this.insertImageBlock(event.target.result);
+            };
+            reader.readAsDataURL(blob);
+            return;
+          }
+        }
+      });
+
+      // 2. Drag & Drop files into editor
+      window.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        this.container.classList.add('drag-over');
+      });
+
+      window.addEventListener('dragleave', (e) => {
+        if (e.relatedTarget === null || e.clientX === 0 || e.clientY === 0) {
+          this.container.classList.remove('drag-over');
+        }
+      });
+
+      window.addEventListener('drop', (e) => {
+        e.preventDefault();
+        this.container.classList.remove('drag-over');
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          Array.from(e.dataTransfer.files).forEach(file => {
+            this.handleUploadedFile(file);
+          });
+        }
+      });
+    }
+
+    bindUploadInputs() {
+      this.imageInput = document.getElementById('image-block-input');
+      this.fileInput = document.getElementById('file-block-input');
+      this.targetUploadBlock = null;
+
+      if (this.imageInput) {
+        this.imageInput.addEventListener('change', (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            if (this.targetUploadBlock) {
+              this.changeBlockToImage(this.targetUploadBlock, ev.target.result, file.name);
+            } else {
+              this.insertImageBlock(ev.target.result, file.name);
+            }
+          };
+          reader.readAsDataURL(file);
+          this.imageInput.value = '';
+        });
+      }
+
+      if (this.fileInput) {
+        this.fileInput.addEventListener('change', (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            if (this.targetUploadBlock) {
+              this.changeBlockToFile(this.targetUploadBlock, file, ev.target.result);
+            } else {
+              this.insertFileBlock(file, ev.target.result);
+            }
+          };
+          reader.readAsDataURL(file);
+          this.fileInput.value = '';
+        });
+      }
+    }
+
+    openImagePickerForBlock(block = null) {
+      this.targetUploadBlock = block;
+      if (this.imageInput) this.imageInput.click();
+    }
+
+    openFilePickerForBlock(block = null) {
+      this.targetUploadBlock = block;
+      if (this.fileInput) this.fileInput.click();
+    }
+
+    handleUploadedFile(file) {
+      const reader = new FileReader();
+      if (file.type.startsWith('image/')) {
+        reader.onload = (e) => {
+          this.insertImageBlock(e.target.result, file.name);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        reader.onload = (e) => {
+          this.insertFileBlock(file, e.target.result);
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    insertImageBlock(dataUrl, caption = '') {
+      const newBlockData = {
+        id: 'b_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        type: 'image',
+        url: dataUrl,
+        caption: caption
+      };
+      const newBlock = this.createBlockElement(newBlockData);
+      this.container.appendChild(newBlock);
+      this.onUpdate();
+    }
+
+    insertFileBlock(file, dataUrl) {
+      const sizeStr = this.formatFileSize(file.size);
+      const newBlockData = {
+        id: 'b_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        type: 'file',
+        fileName: file.name,
+        fileSize: sizeStr,
+        fileData: dataUrl
+      };
+      const newBlock = this.createBlockElement(newBlockData);
+      this.container.appendChild(newBlock);
+      this.onUpdate();
+    }
+
+    changeBlockToImage(targetBlock, dataUrl, caption = '') {
+      const newBlockData = {
+        id: targetBlock.getAttribute('data-id') || ('b_' + Date.now()),
+        type: 'image',
+        url: dataUrl,
+        caption: caption
+      };
+      const newBlock = this.createBlockElement(newBlockData);
+      targetBlock.replaceWith(newBlock);
+      this.onUpdate();
+    }
+
+    changeBlockToFile(targetBlock, file, dataUrl) {
+      const sizeStr = this.formatFileSize(file.size);
+      const newBlockData = {
+        id: targetBlock.getAttribute('data-id') || ('b_' + Date.now()),
+        type: 'file',
+        fileName: file.name,
+        fileSize: sizeStr,
+        fileData: dataUrl
+      };
+      const newBlock = this.createBlockElement(newBlockData);
+      targetBlock.replaceWith(newBlock);
+      this.onUpdate();
+    }
+
+    formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+      else return (bytes / 1048576).toFixed(1) + ' MB';
     }
 
     bindSlashMenuEvents() {
@@ -325,6 +492,91 @@
       });
 
       block.appendChild(handle);
+
+      // Image Block
+      if (type === 'image') {
+        const url = blockData.url || '';
+        const caption = blockData.caption || '';
+        
+        const wrapper = document.createElement('div');
+        wrapper.className = 'image-block-wrapper';
+
+        if (url) {
+          wrapper.innerHTML = `
+            <img src="${url}" alt="${caption || '노트 이미지'}" />
+            <div class="image-block-overlay-actions">
+              <button class="img-action-btn btn-img-download" title="이미지 다운로드"><i class="fa-solid fa-download"></i></button>
+              <button class="img-action-btn btn-img-delete" title="이미지 삭제"><i class="fa-regular fa-trash-can"></i></button>
+            </div>
+          `;
+          wrapper.querySelector('.btn-img-download').addEventListener('click', () => {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `notecraft-img-${Date.now()}.png`;
+            a.click();
+          });
+          wrapper.querySelector('.btn-img-delete').addEventListener('click', () => {
+            block.remove();
+            this.onUpdate();
+          });
+        } else {
+          // Empty state placeholder
+          wrapper.innerHTML = `
+            <div class="image-empty-placeholder">
+              <i class="fa-regular fa-image"></i>
+              <span>클릭하여 사진을 선택하거나 여기에 이미지를 끌어다 놓으세요</span>
+            </div>
+          `;
+          wrapper.querySelector('.image-empty-placeholder').addEventListener('click', () => {
+            this.openImagePickerForBlock(block);
+          });
+        }
+
+        const captionInput = document.createElement('input');
+        captionInput.type = 'text';
+        captionInput.className = 'image-caption-input';
+        captionInput.placeholder = '이미지 캡션 추가 (선택사항)...';
+        captionInput.value = caption;
+        captionInput.addEventListener('input', () => this.onUpdate());
+
+        block.appendChild(wrapper);
+        block.appendChild(captionInput);
+        return block;
+      }
+
+      // File Attachment Block
+      if (type === 'file') {
+        const fileName = blockData.fileName || '첨부 파일';
+        const fileSize = blockData.fileSize || '';
+        const fileData = blockData.fileData || '';
+
+        block.setAttribute('data-file-content', fileData);
+
+        const card = document.createElement('div');
+        card.className = 'file-attachment-card';
+        card.innerHTML = `
+          <div class="file-card-icon"><i class="fa-solid fa-file-arrow-down"></i></div>
+          <div class="file-card-info">
+            <div class="file-card-name" title="${fileName}">${fileName}</div>
+            <div class="file-card-size">${fileSize}</div>
+          </div>
+          <button class="file-card-download-btn"><i class="fa-solid fa-download"></i> 다운로드</button>
+        `;
+
+        card.querySelector('.file-card-download-btn').addEventListener('click', () => {
+          if (fileData) {
+            const a = document.createElement('a');
+            a.href = fileData;
+            a.download = fileName;
+            a.click();
+          } else {
+            alert('파일 데이터를 찾을 수 없습니다.');
+          }
+        });
+
+        block.appendChild(card);
+        return block;
+      }
 
       if (type === 'todo') {
         const checkWrap = document.createElement('div');
@@ -573,8 +825,19 @@
 
     applySlashCommand(type) {
       if (!this.slashTargetBlock) return;
+      const target = this.slashTargetBlock;
       this.hideSlashMenu();
-      this.changeBlockType(this.slashTargetBlock, type);
+
+      if (type === 'image') {
+        this.openImagePickerForBlock(target);
+        return;
+      }
+      if (type === 'file') {
+        this.openFilePickerForBlock(target);
+        return;
+      }
+
+      this.changeBlockType(target, type);
     }
 
     handleSelectionChange() {
@@ -655,6 +918,33 @@
       Array.from(this.container.children).forEach(blockEl => {
         const id = blockEl.getAttribute('data-id');
         const type = blockEl.getAttribute('data-type');
+        
+        if (type === 'image') {
+          const img = blockEl.querySelector('.image-block-wrapper img');
+          const captionInput = blockEl.querySelector('.image-caption-input');
+          blocks.push({
+            id,
+            type: 'image',
+            url: img ? img.src : '',
+            caption: captionInput ? captionInput.value : ''
+          });
+          return;
+        }
+
+        if (type === 'file') {
+          const nameEl = blockEl.querySelector('.file-card-name');
+          const sizeEl = blockEl.querySelector('.file-card-size');
+          const dlBtn = blockEl.querySelector('.file-card-download-btn');
+          blocks.push({
+            id,
+            type: 'file',
+            fileName: nameEl ? nameEl.textContent : '',
+            fileSize: sizeEl ? sizeEl.textContent : '',
+            fileData: blockEl.getAttribute('data-file-content') || ''
+          });
+          return;
+        }
+
         const contentEl = blockEl.querySelector('.block-content');
         const content = contentEl ? contentEl.innerHTML : '';
         const checkbox = blockEl.querySelector('.todo-checkbox');
@@ -1287,6 +1577,14 @@
           this.deleteNote(this.currentNote.id);
         }
       });
+
+      // Quick insert image button on canvas toolbar
+      const quickImgBtn = document.getElementById('btn-quick-insert-image');
+      if (quickImgBtn) {
+        quickImgBtn.addEventListener('click', () => {
+          this.editor.openImagePickerForBlock(null);
+        });
+      }
 
       this.btnExportPdf.addEventListener('click', () => {
         window.print();

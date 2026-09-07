@@ -233,6 +233,180 @@
   background-color: var(--border-color);
 }
 
+/* Image Block */
+.block-image {
+  width: 100%;
+  margin: 8px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.image-block-wrapper {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-sidebar);
+}
+
+.image-block-wrapper img {
+  display: block;
+  max-width: 100%;
+  max-height: 520px;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+}
+
+.image-block-overlay-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.image-block-wrapper:hover .image-block-overlay-actions {
+  opacity: 1;
+}
+
+.img-action-btn {
+  color: #ffffff;
+  font-size: 0.8rem;
+  padding: 4px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.img-action-btn:hover {
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
+.image-caption-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 6px 0;
+  outline: none;
+  font-family: inherit;
+}
+
+/* Image Upload Empty State */
+.image-empty-placeholder {
+  width: 100%;
+  padding: 28px 16px;
+  border: 2px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-sidebar);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+}
+
+.image-empty-placeholder:hover, .image-empty-placeholder.drag-over {
+  border-color: var(--accent-primary);
+  background-color: var(--accent-light);
+  color: var(--accent-primary);
+}
+
+.image-empty-placeholder i {
+  font-size: 1.8rem;
+}
+
+/* File Attachment Block */
+.block-file {
+  width: 100%;
+  margin: 6px 0;
+}
+
+.file-attachment-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.15s ease;
+  max-width: 480px;
+  width: 100%;
+}
+
+.file-attachment-card:hover {
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-md);
+}
+
+.file-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background-color: var(--accent-light);
+  color: var(--accent-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.file-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-card-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-card-size {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.file-card-download-btn {
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-sidebar);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-card-download-btn:hover {
+  background-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+/* Global Editor Drag-Over Highlight */
+.blocks-editor-layer.drag-over {
+  outline: 2px dashed var(--accent-primary);
+  outline-offset: 4px;
+}
+
 /* ==========================================================================
    Slash Menu Popover (Notion Style)
    ========================================================================== */

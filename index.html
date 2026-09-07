@@ -202,6 +202,9 @@
 
           <!-- 실행 취소 / 다시 실행 / 전체 지우기 -->
           <div class="history-group">
+            <button id="btn-quick-insert-image" class="canvas-action-btn" title="사진 / 이미지 삽입">
+              <i class="fa-regular fa-image"></i>
+            </button>
             <button id="btn-undo" class="canvas-action-btn" title="실행 취소 (Ctrl+Z)">
               <i class="fa-solid fa-rotate-left"></i>
             </button>
@@ -311,6 +314,20 @@
           <div class="slash-desc">아이콘과 배경색으로 눈에 띄게 강조합니다.</div>
         </div>
       </div>
+      <div class="slash-item" data-type="image">
+        <div class="slash-icon"><i class="fa-regular fa-image"></i></div>
+        <div class="slash-text">
+          <div class="slash-title">이미지 (Image)</div>
+          <div class="slash-desc">사진이나 스크린샷을 업로드합니다.</div>
+        </div>
+      </div>
+      <div class="slash-item" data-type="file">
+        <div class="slash-icon"><i class="fa-solid fa-paperclip"></i></div>
+        <div class="slash-text">
+          <div class="slash-title">파일 첨부 (File)</div>
+          <div class="slash-desc">문서나 자료 파일을 첨부합니다.</div>
+        </div>
+      </div>
       <div class="slash-item" data-type="divider">
         <div class="slash-icon"><i class="fa-solid fa-minus"></i></div>
         <div class="slash-text">
@@ -320,6 +337,10 @@
       </div>
     </div>
   </div>
+
+  <!-- 숨김 파일 업로더 인풋 -->
+  <input type="file" id="image-block-input" accept="image/*" style="display: none;" />
+  <input type="file" id="file-block-input" style="display: none;" />
 
   <!-- 플로팅 서식 툴바 (텍스트 드래그 시) -->
   <div id="format-toolbar" class="format-toolbar hidden">
