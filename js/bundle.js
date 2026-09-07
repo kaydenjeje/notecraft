@@ -1870,7 +1870,15 @@
           await this.auth.signInWithPopup(provider);
           return;
         } catch (err) {
-          console.warn('Firebase popup failed, opening quick modal', err);
+          console.error('Firebase popup failed:', err);
+          if (err.code === 'auth/popup-closed-by-user') {
+            return;
+          }
+          if (err.code === 'auth/operation-not-allowed') {
+            alert('⚠️ Firebase 콘솔에서 [Google 제공업체]가 아직 켜지지 않았습니다!\n\n해결 방법: Firebase 콘솔 ➡️ Authentication ➡️ [Sign-in method] 탭에서 Google을 켜주세요.');
+          } else if (err.code === 'auth/unauthorized-domain') {
+            alert('⚠️ Firebase 콘솔의 [승인된 도메인]에 현재 주소가 없습니다!\n\n해결 방법: Firebase 콘솔 ➡️ Authentication ➡️ [Settings] 탭 ➡️ [Authorized domains]에 kaydenjeje.github.io 를 추가해주세요.');
+          }
         }
       }
 
