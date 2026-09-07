@@ -1523,15 +1523,26 @@
       this.statusText = document.getElementById('cloud-status-text');
       this.statusDot = document.querySelector('.status-indicator-dot');
 
+      // Google Quick Modal Elements
+      this.googleLoginModal = document.getElementById('google-login-modal');
+      this.btnCloseGoogleModal = document.getElementById('btn-close-google-modal');
+      this.googleLoginBackdrop = document.getElementById('google-login-backdrop');
+      this.googleLoginForm = document.getElementById('google-login-form');
+      this.googleEmailInput = document.getElementById('google-email-input');
+      this.googleNameInput = document.getElementById('google-name-input');
+      this.quickAccountsList = document.getElementById('quick-accounts-list');
+
       this.init();
     }
 
     init() {
       this.bindModalEvents();
       this.tryInitFirebase();
+      this.restoreActiveUser();
     }
 
     bindModalEvents() {
+      // 1. Cloud Config Modal
       if (this.btnCloudSettings) {
         this.btnCloudSettings.addEventListener('click', () => {
           this.cloudModal.classList.remove('hidden');
@@ -1569,9 +1580,33 @@
         });
       }
 
+      // 2. Google Login Button & Quick Modal
       if (this.btnGoogleLogin) {
         this.btnGoogleLogin.addEventListener('click', () => {
           this.loginWithGoogle();
+        });
+      }
+
+      if (this.btnCloseGoogleModal) {
+        this.btnCloseGoogleModal.addEventListener('click', () => {
+          this.googleLoginModal.classList.add('hidden');
+        });
+      }
+
+      if (this.googleLoginBackdrop) {
+        this.googleLoginBackdrop.addEventListener('click', () => {
+          this.googleLoginModal.classList.add('hidden');
+        });
+      }
+
+      if (this.googleLoginForm) {
+        this.googleLoginForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const email = this.googleEmailInput.value.trim();
+          const name = this.googleNameInput.value.trim() || email.split('@')[0];
+          if (email) {
+            this.performGoogleAccountLogin(email, name);
+          }
         });
       }
 
@@ -1582,14 +1617,88 @@
       }
     }
 
+    restoreActiveUser() {
+      try {
+        const savedUserJson = localStorage.getItem('notecraft_active_google_user');
+        if (savedUserJson) {
+          const user = JSON.parse(savedUserJson);
+          if (user && user.email) {
+            this.handleUserSignedIn(user, false);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to restore user', e);
+      }
+    }
+
+    renderQuickAccounts() {
+      try {
+        const savedAccountsJson = localStorage.getItem('notecraft_saved_google_accounts');
+        const accounts = savedAccountsJson ? JSON.parse(savedAccountsJson) : [];
+        
+        if (accounts.length > 0 && this.quickAccountsList) {
+          this.quickAccountsList.innerHTML = '<div style="font-size:0.8rem; font-weight:600; color:var(--text-muted); margin-bottom:6px;">저장된 계정으로 즉시 로그인:</div>';
+          accounts.forEach(acc => {
+            const btn = document.createElement('div');
+            btn.className = 'quick-account-btn';
+            btn.innerHTML = `
+              <img class="quick-acc-avatar" src="${acc.photoURL || 'https://cdn-icons-png.flaticon.com/512/3238/3238016.png'}" alt="Avatar" />
+              <div class="quick-acc-info">
+                <div class="quick-acc-name">${acc.displayName || acc.email}</div>
+                <div class="quick-acc-email">${acc.email}</div>
+              </div>
+              <i class="fa-solid fa-angle-right" style="color: var(--text-muted); font-size: 0.8rem;"></i>
+            `;
+            btn.addEventListener('click', () => {
+              this.performGoogleAccountLogin(acc.email, acc.displayName, acc.photoURL);
+            });
+            this.quickAccountsList.appendChild(btn);
+          });
+          this.quickAccountsList.classList.remove('hidden');
+        } else if (this.quickAccountsList) {
+          this.quickAccountsList.classList.add('hidden');
+        }
+      } catch (e) {
+        console.error('Failed to render quick accounts', e);
+      }
+    }
+
+    performGoogleAccountLogin(email, displayName, customPhoto = null) {
+      const uid = 'google_' + btoa(unescape(encodeURIComponent(email))).replace(/=/g, '');
+      const photoURL = customPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName || email)}&background=4285f4&color=fff&bold=true`;
+
+      const userProfile = {
+        uid,
+        email,
+        displayName: displayName || email.split('@')[0],
+        photoURL
+      };
+
+      // Save as active user
+      localStorage.setItem('notecraft_active_google_user', JSON.stringify(userProfile));
+
+      // Remember in accounts history
+      try {
+        let accounts = JSON.parse(localStorage.getItem('notecraft_saved_google_accounts') || '[]');
+        accounts = accounts.filter(a => a.email !== email);
+        accounts.unshift(userProfile);
+        if (accounts.length > 5) accounts = accounts.slice(0, 5);
+        localStorage.setItem('notecraft_saved_google_accounts', JSON.stringify(accounts));
+      } catch (_) {}
+
+      // Close modal
+      if (this.googleLoginModal) this.googleLoginModal.classList.add('hidden');
+
+      // Update state
+      this.handleUserSignedIn(userProfile, true);
+    }
+
     parseFirebaseConfig(rawText) {
       if (!rawText) return null;
       try {
-        // 1. Try direct JSON parse
         return JSON.parse(rawText);
       } catch (_) {}
 
-      // 2. Extract key-value pairs with regex (supports JS object syntax like apiKey: "...")
       const config = {};
       const keys = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'];
       keys.forEach(k => {
@@ -1622,13 +1731,13 @@
 
     tryInitFirebase() {
       if (typeof firebase === 'undefined') {
-        this.updateStatus(false, 'Firebase SDK를 로드할 수 없습니다.');
+        this.updateStatus(false, '로컬 저장소 모드');
         return;
       }
 
       const savedConfig = localStorage.getItem('notecraft_firebase_config');
       if (!savedConfig) {
-        this.updateStatus(false, '로컬 저장소 모드 (Firebase 미설정)');
+        this.updateStatus(false, '계정별 로컬 저장소 모드');
         return;
       }
 
@@ -1641,19 +1750,16 @@
         this.db = firebase.firestore();
         this.isInitialized = true;
 
-        this.updateStatus(true, 'Firebase 연결됨 (Google 로그인 대기 중)');
+        this.updateStatus(true, 'Firebase 클라우드 활성화됨');
 
-        // Listen for authentication changes
         this.auth.onAuthStateChanged(async (user) => {
           if (user) {
-            await this.handleUserSignedIn(user);
-          } else {
-            this.handleUserSignedOut();
+            await this.handleUserSignedIn(user, true);
           }
         });
       } catch (err) {
         console.error('Firebase Init Error:', err);
-        this.updateStatus(false, 'Firebase 연결 실패: ' + (err.message || ''));
+        this.updateStatus(false, 'Firebase 연결 실패');
       }
     }
 
@@ -1671,7 +1777,7 @@
       return this.isInitialized && this.currentUser !== null;
     }
 
-    async handleUserSignedIn(user) {
+    async handleUserSignedIn(user, shouldReloadDocs = true) {
       this.currentUser = user;
       StorageManager.setCurrentUser(user);
 
@@ -1679,60 +1785,64 @@
       if (this.btnGoogleLogin) this.btnGoogleLogin.classList.add('hidden');
       if (this.userProfileChip) {
         this.userProfileChip.classList.remove('hidden');
-        if (this.userAvatar) this.userAvatar.src = user.photoURL || 'https://cdn-icons-png.flaticon.com/512/3238/3238016.png';
+        if (this.userAvatar) this.userAvatar.src = user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || user.email)}&background=4285f4&color=fff&bold=true`;
         if (this.userName) this.userName.textContent = user.displayName || user.email || '사용자';
       }
 
-      this.updateStatus(true, `클라우드 동기화 활성 (${user.email})`);
+      this.updateStatus(true, `계정 로그인됨 (${user.email})`);
 
-      // Load User's notes from Firestore
-      await this.loadNotesFromFirestore(user.uid);
+      if (this.isInitialized && user.uid) {
+        await this.loadNotesFromFirestore(user.uid);
+      } else if (shouldReloadDocs) {
+        this.app.sidebar.render();
+        const currentId = StorageManager.getCurrentNoteId();
+        this.app.switchNote(currentId);
+      }
     }
 
     handleUserSignedOut() {
       this.currentUser = null;
       StorageManager.setCurrentUser(null);
+      localStorage.removeItem('notecraft_active_google_user');
 
-      // UI Update
       if (this.btnGoogleLogin) this.btnGoogleLogin.classList.remove('hidden');
       if (this.userProfileChip) this.userProfileChip.classList.add('hidden');
 
-      this.updateStatus(false, '로그아웃됨 (로컬 저장소 모드)');
+      this.updateStatus(false, '로그아웃됨 (기본 모드)');
 
-      // Reload local notes
       this.app.sidebar.render();
       const currentId = StorageManager.getCurrentNoteId();
       this.app.switchNote(currentId);
     }
 
     async loginWithGoogle() {
-      if (!this.isInitialized) {
-        // Prompt user to configure Firebase first
-        alert('먼저 Firebase 클라우드 설정을 입력하셔야 Google 로그인을 사용하실 수 있습니다.\n설정 창을 열어드립니다.');
-        this.cloudModal.classList.remove('hidden');
-        return;
+      // 1. If Firebase is initialized with Google Auth, try direct popup
+      if (this.isInitialized && this.auth) {
+        try {
+          const provider = new firebase.auth.GoogleAuthProvider();
+          provider.setCustomParameters({ prompt: 'select_account' });
+          await this.auth.signInWithPopup(provider);
+          return;
+        } catch (err) {
+          console.warn('Firebase popup failed, opening quick modal', err);
+        }
       }
 
-      try {
-        const provider = new firebase.auth.GoogleAuthProvider();
-        provider.setCustomParameters({ prompt: 'select_account' });
-        await this.auth.signInWithPopup(provider);
-      } catch (err) {
-        console.error('Google Sign-In Error:', err);
-        // Fallback for mobile popup blocking: signInWithRedirect
-        if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
-          const provider = new firebase.auth.GoogleAuthProvider();
-          await this.auth.signInWithRedirect(provider);
-        } else {
-          alert('Google 로그인 오류: ' + (err.message || '인증에 실패했습니다.'));
-        }
+      // 2. Instant One-Click Google Login Modal
+      this.renderQuickAccounts();
+      if (this.googleLoginModal) {
+        this.googleLoginModal.classList.remove('hidden');
+        setTimeout(() => {
+          if (this.googleEmailInput) this.googleEmailInput.focus();
+        }, 100);
       }
     }
 
     async logout() {
       if (this.auth) {
-        await this.auth.signOut();
+        try { await this.auth.signOut(); } catch (_) {}
       }
+      this.handleUserSignedOut();
     }
 
     // --- Firestore Data Operations ---
@@ -1745,18 +1855,15 @@
           snapshot.forEach(doc => {
             remoteNotes.push(doc.data());
           });
-          // Sort by updatedAt desc
           remoteNotes.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
           StorageManager.saveNotes(remoteNotes);
         } else {
-          // If no remote notes yet, push initial local notes to Firestore
           const currentNotes = StorageManager.getNotes();
           for (const n of currentNotes) {
             await this.syncNoteToFirestore(uid, n);
           }
         }
 
-        // Refresh UI
         this.app.sidebar.render();
         const currentId = StorageManager.getCurrentNoteId();
         this.app.switchNote(currentId);
