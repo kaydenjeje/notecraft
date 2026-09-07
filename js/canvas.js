@@ -70,9 +70,20 @@ export class DrawingCanvas {
 
   getPointerPos(e) {
     const rect = this.canvas.getBoundingClientRect();
+    const clientX = e.clientX ?? (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const clientY = e.clientY ?? (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+
+    // Logical dimensions of the canvas in CSS pixels
+    const logicalWidth = this.canvas.width / (this.dpr || 1);
+    const logicalHeight = this.canvas.height / (this.dpr || 1);
+
+    // Calculate exact scaling ratio between rendered CSS element size and logical canvas size
+    const scaleX = rect.width > 0 ? (logicalWidth / rect.width) : 1;
+    const scaleY = rect.height > 0 ? (logicalHeight / rect.height) : 1;
+
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY,
       pressure: e.pressure > 0 ? e.pressure : 0.5
     };
   }
