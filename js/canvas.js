@@ -11,8 +11,27 @@ export class DrawingCanvas {
     this.onUpdate = options.onUpdate || (() => {});
     this.paperContainer = document.getElementById('note-paper-container');
 
+    // Dedicated active stroke overlay canvas to eliminate overlapping joint dots
+    let activeCanvas = document.getElementById('drawing-canvas-active');
+    if (!activeCanvas && this.canvas && this.canvas.parentElement) {
+      activeCanvas = document.createElement('canvas');
+      activeCanvas.id = 'drawing-canvas-active';
+      activeCanvas.style.position = 'absolute';
+      activeCanvas.style.top = '0';
+      activeCanvas.style.left = '0';
+      activeCanvas.style.width = '100%';
+      activeCanvas.style.height = '100%';
+      activeCanvas.style.pointerEvents = 'none';
+      this.canvas.parentElement.appendChild(activeCanvas);
+    }
+    this.activeCanvas = activeCanvas;
+    if (this.activeCanvas) {
+      this.activeCtx = this.activeCanvas.getContext('2d');
+    }
+
     // Drawing States
     this.isDrawing = false;
+    this.activePointerId = null;
     this.currentTool = 'pen'; // 'pen' | 'highlighter' | 'eraser'
     this.currentColor = '#1e293b';
     this.strokeWidth = 4;
@@ -52,6 +71,16 @@ export class DrawingCanvas {
 
     this.dpr = dpr;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    if (this.activeCanvas) {
+      this.activeCanvas.width = this.canvas.width;
+      this.activeCanvas.height = this.canvas.height;
+      this.activeCanvas.style.width = `${width}px`;
+      this.activeCanvas.style.height = `${height}px`;
+      if (this.activeCtx) {
+        this.activeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+    }
   }
 
   resizeCanvas() {
@@ -64,8 +93,8 @@ export class DrawingCanvas {
     this.canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     this.canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
     this.canvas.addEventListener('pointerup', (e) => this.onPointerUp(e));
-    this.canvas.addEventListener('pointercancel', (e) => this.onPointerUp(e));
-    this.canvas.addEventListener('lostpointercapture', (e) => this.onPointerUp(e));
+    this.canvas.addEventListener('pointercancel', (e) => this.onPointerCancel(e));
+    this.canvas.addEventListener('lostpointercapture', (e) => this.onPointerCancel(e));
 
     this.canvas.addEventListener('touchstart', (e) => {
       if (e.target === this.canvas) e.preventDefault();
@@ -127,7 +156,12 @@ export class DrawingCanvas {
     const pos = this.getPointerPos(e);
     this.points = [pos];
     this.saveState();
-    this.drawDot(pos);
+
+    if (this.currentTool === 'eraser') {
+      this.erasePoint(pos);
+    } else {
+      this.renderActiveStroke();
+    }
   }
 
   onPointerMove(e) {
@@ -136,7 +170,12 @@ export class DrawingCanvas {
 
     const pos = this.getPointerPos(e);
     this.points.push(pos);
-    this.drawStroke(this.points);
+
+    if (this.currentTool === 'eraser') {
+      this.eraseSegment(this.points[this.points.length - 2], pos);
+    } else {
+      this.renderActiveStroke();
+    }
   }
 
   onPointerUp(e) {
@@ -149,83 +188,133 @@ export class DrawingCanvas {
       this.canvas.releasePointerCapture(e.pointerId);
     } catch (_) {}
 
-    if (this.points.length === 1) {
-      this.drawDot(this.points[0]);
+    if (this.currentTool !== 'eraser' && this.points.length > 0 && this.activeCanvas) {
+      // Bake the clean, continuous stroke into main canvas at 1:1 physical resolution
+      this.ctx.save();
+      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      this.ctx.drawImage(this.activeCanvas, 0, 0);
+      this.ctx.restore();
+
+      // Clear active stroke canvas
+      if (this.activeCtx) {
+        this.activeCtx.save();
+        this.activeCtx.setTransform(1, 0, 0, 1, 0, 0);
+        this.activeCtx.clearRect(0, 0, this.activeCanvas.width, this.activeCanvas.height);
+        this.activeCtx.restore();
+      }
     }
+
     this.points = [];
     this.redoStack = [];
     this.onUpdate();
   }
 
-  drawDot(point) {
-    this.ctx.save();
-    if (this.currentTool === 'eraser') {
-      this.ctx.globalCompositeOperation = 'destination-out';
-      this.ctx.fillStyle = 'rgba(0,0,0,1)';
-      this.ctx.beginPath();
-      this.ctx.arc(point.x, point.y, (this.strokeWidth * 4) / 2, 0, Math.PI * 2);
-      this.ctx.fill();
-    } else if (this.currentTool === 'highlighter') {
-      this.ctx.globalCompositeOperation = 'source-over';
-      this.ctx.globalAlpha = 0.35;
-      this.ctx.fillStyle = this.currentColor;
-      this.ctx.beginPath();
-      this.ctx.arc(point.x, point.y, (this.strokeWidth * 3.5) / 2, 0, Math.PI * 2);
-      this.ctx.fill();
-    } else {
-      this.ctx.globalCompositeOperation = 'source-over';
-      this.ctx.globalAlpha = 1.0;
-      this.ctx.fillStyle = this.currentColor;
-      const radius = (this.strokeWidth * (0.6 + (point.pressure * 0.8))) / 2;
-      this.ctx.beginPath();
-      this.ctx.arc(point.x, point.y, Math.max(radius, 1.5), 0, Math.PI * 2);
-      this.ctx.fill();
+  onPointerCancel(e) {
+    if (!this.isDrawing) return;
+    if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
+
+    this.isDrawing = false;
+    this.activePointerId = null;
+    try {
+      this.canvas.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+
+    if (this.activeCtx && this.activeCanvas) {
+      this.activeCtx.save();
+      this.activeCtx.setTransform(1, 0, 0, 1, 0, 0);
+      this.activeCtx.clearRect(0, 0, this.activeCanvas.width, this.activeCanvas.height);
+      this.activeCtx.restore();
     }
+    this.points = [];
+  }
+
+  renderActiveStroke() {
+    if (!this.activeCtx || this.points.length === 0) return;
+
+    // Clear active canvas in physical coordinates
+    this.activeCtx.save();
+    this.activeCtx.setTransform(1, 0, 0, 1, 0, 0);
+    this.activeCtx.clearRect(0, 0, this.activeCanvas.width, this.activeCanvas.height);
+    this.activeCtx.restore();
+
+    if (this.points.length === 1) {
+      const pt = this.points[0];
+      this.activeCtx.save();
+      if (this.currentTool === 'highlighter') {
+        this.activeCtx.globalAlpha = 0.35;
+        this.activeCtx.fillStyle = this.currentColor;
+        this.activeCtx.beginPath();
+        this.activeCtx.arc(pt.x, pt.y, (this.strokeWidth * 3.5) / 2, 0, Math.PI * 2);
+        this.activeCtx.fill();
+      } else {
+        this.activeCtx.globalAlpha = 1.0;
+        this.activeCtx.fillStyle = this.currentColor;
+        const radius = (this.strokeWidth * (0.6 + (pt.pressure * 0.8))) / 2;
+        this.activeCtx.beginPath();
+        this.activeCtx.arc(pt.x, pt.y, Math.max(radius, 1.5), 0, Math.PI * 2);
+        this.activeCtx.fill();
+      }
+      this.activeCtx.restore();
+      return;
+    }
+
+    // Render entire continuous path in a single GPU pass (prevents any joint dot overlap!)
+    this.activeCtx.save();
+    this.activeCtx.lineCap = 'round';
+    this.activeCtx.lineJoin = 'round';
+
+    if (this.currentTool === 'highlighter') {
+      this.activeCtx.globalAlpha = 0.35;
+      this.activeCtx.strokeStyle = this.currentColor;
+      this.activeCtx.lineWidth = this.strokeWidth * 3.5;
+    } else {
+      this.activeCtx.globalAlpha = 1.0;
+      this.activeCtx.strokeStyle = this.currentColor;
+      const latestPoint = this.points[this.points.length - 1];
+      const pressureMultiplier = 0.6 + (latestPoint.pressure * 0.8);
+      this.activeCtx.lineWidth = this.strokeWidth * pressureMultiplier;
+    }
+
+    this.activeCtx.beginPath();
+    this.activeCtx.moveTo(this.points[0].x, this.points[0].y);
+
+    if (this.points.length === 2) {
+      this.activeCtx.lineTo(this.points[1].x, this.points[1].y);
+    } else {
+      for (let i = 1; i < this.points.length - 1; i++) {
+        const midX = (this.points[i].x + this.points[i + 1].x) / 2;
+        const midY = (this.points[i].y + this.points[i + 1].y) / 2;
+        this.activeCtx.quadraticCurveTo(this.points[i].x, this.points[i].y, midX, midY);
+      }
+      const last = this.points[this.points.length - 1];
+      this.activeCtx.lineTo(last.x, last.y);
+    }
+
+    this.activeCtx.stroke();
+    this.activeCtx.restore();
+  }
+
+  erasePoint(pt) {
+    this.ctx.save();
+    this.ctx.globalCompositeOperation = 'destination-out';
+    this.ctx.fillStyle = 'rgba(0,0,0,1)';
+    this.ctx.beginPath();
+    this.ctx.arc(pt.x, pt.y, (this.strokeWidth * 4) / 2, 0, Math.PI * 2);
+    this.ctx.fill();
     this.ctx.restore();
   }
 
-  drawStroke(points, isFinal = false) {
-    if (points.length < 2) return;
-
+  eraseSegment(p1, p2) {
     this.ctx.save();
-
-    // Tool Configurations
-    if (this.currentTool === 'eraser') {
-      this.ctx.globalCompositeOperation = 'destination-out';
-      this.ctx.strokeStyle = 'rgba(0,0,0,1)';
-      this.ctx.lineWidth = this.strokeWidth * 4; // Eraser is wider
-    } else if (this.currentTool === 'highlighter') {
-      this.ctx.globalCompositeOperation = 'source-over';
-      this.ctx.globalAlpha = 0.35;
-      this.ctx.strokeStyle = this.currentColor;
-      this.ctx.lineWidth = this.strokeWidth * 3.5;
-    } else {
-      // Standard Pen (Ballpoint / Fountain)
-      this.ctx.globalCompositeOperation = 'source-over';
-      this.ctx.globalAlpha = 1.0;
-      this.ctx.strokeStyle = this.currentColor;
-      // Adjust line width slightly with pressure if available
-      const latestPoint = points[points.length - 1];
-      const pressureMultiplier = 0.6 + (latestPoint.pressure * 0.8);
-      this.ctx.lineWidth = this.strokeWidth * pressureMultiplier;
-    }
-
+    this.ctx.globalCompositeOperation = 'destination-out';
+    this.ctx.strokeStyle = 'rgba(0,0,0,1)';
+    this.ctx.lineWidth = this.strokeWidth * 4;
     this.ctx.lineCap = 'round';
     this.ctx.lineJoin = 'round';
-
-    // Draw smooth quadratic bezier curve between last points
-    const p1 = points[points.length - 2];
-    const p2 = points[points.length - 1];
-
     this.ctx.beginPath();
     this.ctx.moveTo(p1.x, p1.y);
-    
-    // Midpoint curve interpolation for silky smoothness
-    const midX = (p1.x + p2.x) / 2;
-    const midY = (p1.y + p2.y) / 2;
-    this.ctx.quadraticCurveTo(p1.x, p1.y, midX, midY);
+    this.ctx.lineTo(p2.x, p2.y);
     this.ctx.stroke();
-
     this.ctx.restore();
   }
 
@@ -258,6 +347,13 @@ export class DrawingCanvas {
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+
+    if (this.activeCtx && this.activeCanvas) {
+      this.activeCtx.setTransform(1, 0, 0, 1, 0, 0);
+      this.activeCtx.clearRect(0, 0, this.activeCanvas.width, this.activeCanvas.height);
+      this.activeCtx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    }
+
     this.redoStack = [];
     this.onUpdate();
   }
@@ -273,6 +369,12 @@ export class DrawingCanvas {
       this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
       this.ctx.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
       this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+
+      if (this.activeCtx && this.activeCanvas) {
+        this.activeCtx.setTransform(1, 0, 0, 1, 0, 0);
+        this.activeCtx.clearRect(0, 0, this.activeCanvas.width, this.activeCanvas.height);
+        this.activeCtx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      }
     };
     img.src = dataUrl;
   }
@@ -281,6 +383,12 @@ export class DrawingCanvas {
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+
+    if (this.activeCtx && this.activeCanvas) {
+      this.activeCtx.setTransform(1, 0, 0, 1, 0, 0);
+      this.activeCtx.clearRect(0, 0, this.activeCanvas.width, this.activeCanvas.height);
+      this.activeCtx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    }
   }
 
   getDataUrl() {
