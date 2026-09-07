@@ -1285,7 +1285,26 @@
           toolBtns.forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
           this.currentTool = btn.getAttribute('data-tool');
-          document.body.classList.add('canvas-active');
+
+          if (this.currentTool === 'text-cursor') {
+            // Switch to Text mode: let touches/clicks pass directly to text editor
+            document.body.classList.remove('canvas-active');
+            const blocks = document.querySelectorAll('.block-content');
+            blocks.forEach(b => b.setAttribute('contenteditable', 'true'));
+            const titleInput = document.getElementById('note-title-input');
+            if (titleInput) titleInput.style.pointerEvents = 'auto';
+          } else {
+            // Switch to Handwriting mode: capture touches for drawing, prevent text conversion
+            document.body.classList.add('canvas-active');
+            if (document.activeElement && document.activeElement.blur) {
+              document.activeElement.blur();
+            }
+            // Temporarily disable contenteditable during drawing to prevent Scribble/S-pen conversion
+            const blocks = document.querySelectorAll('.block-content');
+            blocks.forEach(b => b.setAttribute('contenteditable', 'false'));
+            const titleInput = document.getElementById('note-title-input');
+            if (titleInput) titleInput.blur();
+          }
         });
       });
 
