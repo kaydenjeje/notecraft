@@ -1735,14 +1735,21 @@
         return;
       }
 
+      // Default Built-in Firebase Config from user's project
+      const DEFAULT_FIREBASE_CONFIG = {
+        apiKey: "YOUR_FIREBASE_API_KEY",
+        authDomain: "notecraft-89f03.firebaseapp.com",
+        projectId: "notecraft-89f03",
+        storageBucket: "notecraft-89f03.firebasestorage.app",
+        messagingSenderId: "505136471466",
+        appId: "1:505136471466:web:5538c1b4c2755dce4a9fd3",
+        measurementId: "G-9FMQGH8B3V"
+      };
+
       const savedConfig = localStorage.getItem('notecraft_firebase_config');
-      if (!savedConfig) {
-        this.updateStatus(false, '계정별 로컬 저장소 모드');
-        return;
-      }
+      const config = savedConfig ? JSON.parse(savedConfig) : DEFAULT_FIREBASE_CONFIG;
 
       try {
-        const config = JSON.parse(savedConfig);
         if (!firebase.apps.length) {
           firebase.initializeApp(config);
         }
@@ -1750,7 +1757,7 @@
         this.db = firebase.firestore();
         this.isInitialized = true;
 
-        this.updateStatus(true, 'Firebase 클라우드 활성화됨');
+        this.updateStatus(true, '클라우드 동기화 준비 완료 (Google)');
 
         this.auth.onAuthStateChanged(async (user) => {
           if (user) {
