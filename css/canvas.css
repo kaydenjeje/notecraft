@@ -235,3 +235,53 @@ body.mode-canvas .blocks-editor-layer {
 .note-paper-container.paper-blank {
   background-image: none;
 }
+
+/* ==========================================================================
+   Mobile & Tablet Responsive Canvas Toolbar
+   ========================================================================== */
+@media (max-width: 768px) {
+  .canvas-toolbar {
+    height: 42px;
+    padding: 0 8px;
+    gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Hide scrollbar for clean look */
+  }
+
+  .canvas-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .canvas-tool-btn, .canvas-action-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 0.85rem;
+  }
+
+  .color-swatch {
+    width: 18px;
+    height: 18px;
+  }
+
+  .custom-color-input {
+    width: 20px;
+    height: 20px;
+  }
+
+  .stroke-btn {
+    width: 24px;
+    height: 24px;
+  }
+
+  .template-selector select {
+    padding: 3px 6px;
+    font-size: 0.78rem;
+    max-width: 110px;
+  }
+
+  .toolbar-divider {
+    height: 16px;
+    margin: 0 2px;
+  }
+}

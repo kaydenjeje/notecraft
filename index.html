@@ -129,12 +129,12 @@
           <!-- 클라우드 연동 상태 및 구글 로그인 영역 -->
           <div class="cloud-auth-widget" id="cloud-auth-widget">
             <!-- 비로그인 상태: 구글 로그인 버튼 -->
-            <button id="btn-google-login" class="btn-google-auth" title="Google 계정으로 로그인하여 기기 간 실시간 동기화">
+            <button id="btn-google-login" class="btn-google-auth" title="Google 로그인">
               <i class="fa-brands fa-google"></i>
-              <span class="auth-btn-label">Google 로그인</span>
+              <span class="auth-btn-label">로그인</span>
             </button>
             
-            <!-- 로그인 상태: 프로필 칩 (기본 숨김) -->
+            <!-- 로그인 상태: 프로필 칩 -->
             <div id="user-profile-chip" class="user-profile-chip hidden">
               <img id="user-avatar" class="user-avatar" src="" alt="Profile" />
               <span id="user-name" class="user-name">사용자</span>
@@ -142,31 +142,62 @@
                 <i class="fa-solid fa-arrow-right-from-bracket"></i>
               </button>
             </div>
-
-            <!-- 클라우드 설정 팝업 열기 버튼 -->
-            <button id="btn-cloud-settings" class="btn-icon" title="클라우드 동기화 (Firebase) 설정">
-              <i class="fa-solid fa-cloud"></i>
-            </button>
           </div>
 
-          <div class="header-divider-v"></div>
-
-          <div class="save-indicator" id="save-status">
+          <div class="save-indicator hide-on-mobile" id="save-status">
             <i class="fa-solid fa-check"></i>
             <span>저장됨</span>
           </div>
-          <button id="btn-mobile-connect" class="btn-icon" title="스마트폰/태블릿으로 열기 (QR 코드)">
-            <i class="fa-solid fa-mobile-screen"></i>
-          </button>
-          <button id="btn-toggle-favorite" class="btn-icon" title="즐겨찾기 토글">
-            <i class="fa-regular fa-star" id="favorite-icon"></i>
-          </button>
-          <button id="btn-export-pdf" class="btn-icon" title="인쇄 / PDF 저장">
-            <i class="fa-solid fa-arrow-up-right-from-square"></i>
-          </button>
-          <button id="btn-delete-note" class="btn-icon text-danger" title="노트 삭제">
-            <i class="fa-regular fa-trash-can"></i>
-          </button>
+
+          <!-- 데스크톱 전용 액션 버튼들 (모바일/태블릿에서는 더보기 메뉴로 통합) -->
+          <div class="desktop-header-actions hide-on-mobile">
+            <button id="btn-mobile-connect" class="btn-icon" title="스마트폰/태블릿으로 열기 (QR 코드)">
+              <i class="fa-solid fa-mobile-screen"></i>
+            </button>
+            <button id="btn-toggle-favorite" class="btn-icon" title="즐겨찾기 토글">
+              <i class="fa-regular fa-star" id="favorite-icon"></i>
+            </button>
+            <button id="btn-export-pdf" class="btn-icon" title="인쇄 / PDF 저장">
+              <i class="fa-solid fa-arrow-up-right-from-square"></i>
+            </button>
+            <button id="btn-cloud-settings" class="btn-icon" title="클라우드 설정">
+              <i class="fa-solid fa-cloud"></i>
+            </button>
+            <button id="btn-delete-note" class="btn-icon text-danger" title="노트 삭제">
+              <i class="fa-regular fa-trash-can"></i>
+            </button>
+          </div>
+
+          <!-- 모바일/태블릿 전용 더보기(⋮) 메뉴 버튼 -->
+          <div class="mobile-more-menu-wrapper show-on-mobile">
+            <button id="btn-header-more" class="btn-icon" title="메뉴 더보기">
+              <i class="fa-solid fa-ellipsis-vertical"></i>
+            </button>
+            <!-- 더보기 드롭다운 팝업 -->
+            <div id="header-more-dropdown" class="header-more-dropdown hidden">
+              <button class="more-item-btn" id="m-btn-favorite">
+                <i class="fa-regular fa-star" id="m-fav-icon"></i>
+                <span>즐겨찾기</span>
+              </button>
+              <button class="more-item-btn" id="m-btn-export-pdf">
+                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                <span>PDF / 인쇄</span>
+              </button>
+              <button class="more-item-btn" id="m-btn-qr">
+                <i class="fa-solid fa-mobile-screen"></i>
+                <span>QR 모바일 연동</span>
+              </button>
+              <button class="more-item-btn" id="m-btn-cloud">
+                <i class="fa-solid fa-cloud"></i>
+                <span>클라우드 설정</span>
+              </button>
+              <div class="more-item-divider"></div>
+              <button class="more-item-btn text-danger" id="m-btn-delete">
+                <i class="fa-regular fa-trash-can"></i>
+                <span>노트 삭제</span>
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 

@@ -1303,8 +1303,182 @@ button {
   line-height: 1.4;
 }
 
-/* Responsive adjustments */
+/* Header More Menu Dropdown */
+.mobile-more-menu-wrapper {
+  position: relative;
+  display: none;
+}
+
+.header-more-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 180px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-float);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 100;
+  animation: fadeInDown 0.15s ease-out;
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.more-item-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.12s;
+}
+
+.more-item-btn:hover {
+  background-color: var(--bg-sidebar-hover);
+}
+
+.more-item-btn i {
+  width: 18px;
+  text-align: center;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.more-item-btn.text-danger i {
+  color: var(--danger);
+}
+
+.more-item-divider {
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 4px 6px;
+}
+
+/* ==========================================================================
+   Responsive adjustments (Tablet & Mobile)
+   ========================================================================== */
+
+/* Tablet & Mobile Breakpoint (<= 992px) */
+@media (max-width: 992px) {
+  .content-header {
+    padding: 0 12px;
+    gap: 8px;
+  }
+
+  .breadcrumb {
+    max-width: 150px;
+  }
+
+  .mode-btn {
+    padding: 5px 10px;
+    font-size: 0.82rem;
+  }
+
+  .note-paper-container {
+    padding: 36px 32px;
+  }
+}
+
+/* Mobile & Small Tablet Breakpoint (<= 768px) */
 @media (max-width: 768px) {
+  .hide-on-mobile {
+    display: none !important;
+  }
+
+  .show-on-mobile {
+    display: flex !important;
+  }
+
+  .content-header {
+    height: 52px;
+    padding: 0 10px;
+  }
+
+  .header-left, .header-right {
+    gap: 6px;
+  }
+
+  .header-left {
+    min-width: 0;
+    flex-shrink: 1;
+  }
+
+  .breadcrumb {
+    max-width: 110px;
+    font-size: 0.84rem;
+  }
+
+  .doc-icon {
+    display: none;
+  }
+
+  .header-center {
+    flex-shrink: 0;
+  }
+
+  .view-mode-selector {
+    padding: 2px;
+    gap: 2px;
+  }
+
+  .mode-btn {
+    padding: 5px 8px;
+    font-size: 0.8rem;
+    gap: 0;
+  }
+
+  .mode-btn i {
+    font-size: 0.9rem;
+  }
+
+  .mode-label {
+    display: none;
+  }
+
+  .btn-google-auth {
+    padding: 5px 8px;
+    font-size: 0.78rem;
+  }
+
+  .btn-google-auth .auth-btn-label {
+    display: none;
+  }
+
+  .user-profile-chip {
+    padding: 2px 4px 2px 2px;
+    gap: 4px;
+  }
+
+  .user-avatar {
+    width: 24px;
+    height: 24px;
+  }
+
+  .user-name {
+    display: none;
+  }
+
   .sidebar {
     position: fixed;
     top: 0;
@@ -1320,15 +1494,26 @@ button {
   }
 
   .note-viewport {
-    padding: 12px 8px 60px;
+    padding: 10px 6px 50px;
   }
 
   .note-paper-container {
-    padding: 24px 20px;
+    padding: 20px 16px;
+    min-height: calc(100vh - 120px);
+    border-radius: var(--radius-sm);
   }
 
-  .mode-label {
-    display: none;
+  .page-emoji-selector {
+    font-size: 2.2rem;
+  }
+
+  .note-title-input {
+    font-size: 1.5rem;
+    margin-top: 8px;
+  }
+
+  .note-meta {
+    font-size: 0.75rem;
   }
 }
 

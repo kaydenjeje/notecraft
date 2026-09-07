@@ -1977,6 +1977,16 @@
       this.mobileUrlInput = document.getElementById('mobile-url-input');
       this.btnCopyUrl = document.getElementById('btn-copy-url');
 
+      // Mobile More Menu (3-dots dropdown) Elements
+      this.btnHeaderMore = document.getElementById('btn-header-more');
+      this.headerMoreDropdown = document.getElementById('header-more-dropdown');
+      this.mBtnFavorite = document.getElementById('m-btn-favorite');
+      this.mFavIcon = document.getElementById('m-fav-icon');
+      this.mBtnExportPdf = document.getElementById('m-btn-export-pdf');
+      this.mBtnQr = document.getElementById('m-btn-qr');
+      this.mBtnCloud = document.getElementById('m-btn-cloud');
+      this.mBtnDelete = document.getElementById('m-btn-delete');
+
       this.init();
     }
 
@@ -2111,6 +2121,69 @@
       this.btnExportPdf.addEventListener('click', () => {
         window.print();
       });
+
+      // Mobile More (3-dots) Menu Setup
+      if (this.btnHeaderMore && this.headerMoreDropdown) {
+        this.btnHeaderMore.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.headerMoreDropdown.classList.toggle('hidden');
+        });
+
+        // Close dropdown when clicking anywhere outside
+        document.addEventListener('click', (e) => {
+          if (!this.headerMoreDropdown.classList.contains('hidden')) {
+            if (!this.headerMoreDropdown.contains(e.target) && e.target !== this.btnHeaderMore) {
+              this.headerMoreDropdown.classList.add('hidden');
+            }
+          }
+        });
+
+        // Mobile sub-item actions
+        if (this.mBtnFavorite) {
+          this.mBtnFavorite.addEventListener('click', () => {
+            this.headerMoreDropdown.classList.add('hidden');
+            if (this.currentNote) {
+              this.toggleFavorite(this.currentNote.id);
+            }
+          });
+        }
+
+        if (this.mBtnExportPdf) {
+          this.mBtnExportPdf.addEventListener('click', () => {
+            this.headerMoreDropdown.classList.add('hidden');
+            window.print();
+          });
+        }
+
+        if (this.mBtnQr) {
+          this.mBtnQr.addEventListener('click', () => {
+            this.headerMoreDropdown.classList.add('hidden');
+            if (this.mobileModal) {
+              this.mobileModal.classList.remove('hidden');
+            }
+          });
+        }
+
+        if (this.mBtnCloud) {
+          this.mBtnCloud.addEventListener('click', () => {
+            this.headerMoreDropdown.classList.add('hidden');
+            const cloudModal = document.getElementById('cloud-config-modal');
+            if (cloudModal) {
+              cloudModal.classList.remove('hidden');
+            }
+          });
+        }
+
+        if (this.mBtnDelete) {
+          this.mBtnDelete.addEventListener('click', () => {
+            this.headerMoreDropdown.classList.add('hidden');
+            if (!this.currentNote) return;
+            if (confirm(`'${this.currentNote.title}' 노트를 삭제하시겠습니까?`)) {
+              this.deleteNote(this.currentNote.id);
+            }
+          });
+        }
+      }
     }
 
     setupEmojiPicker() {
@@ -2197,9 +2270,11 @@
 
     updateFavoriteIcon(isFav) {
       if (isFav) {
-        this.favIcon.className = 'fa-solid fa-star text-amber';
+        if (this.favIcon) this.favIcon.className = 'fa-solid fa-star text-amber';
+        if (this.mFavIcon) this.mFavIcon.className = 'fa-solid fa-star text-amber';
       } else {
-        this.favIcon.className = 'fa-regular fa-star';
+        if (this.favIcon) this.favIcon.className = 'fa-regular fa-star';
+        if (this.mFavIcon) this.mFavIcon.className = 'fa-regular fa-star';
       }
     }
 
