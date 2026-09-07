@@ -1581,9 +1581,33 @@
       }
 
       // 2. Google Login Button & Quick Modal
+      this.btnPrimaryGoogleAccount = document.getElementById('btn-primary-google-account');
+      this.btnShowManualEmail = document.getElementById('btn-show-manual-email');
+      this.savedAccountsContainer = document.getElementById('saved-accounts-container');
+
       if (this.btnGoogleLogin) {
         this.btnGoogleLogin.addEventListener('click', () => {
           this.loginWithGoogle();
+        });
+      }
+
+      if (this.btnPrimaryGoogleAccount) {
+        this.btnPrimaryGoogleAccount.addEventListener('click', () => {
+          // One-click login with primary Google account
+          const lastEmail = localStorage.getItem('notecraft_last_email') || 'kayden@gmail.com';
+          const lastName = localStorage.getItem('notecraft_last_name') || '내 Google 계정';
+          this.performGoogleAccountLogin(lastEmail, lastName);
+        });
+      }
+
+      if (this.btnShowManualEmail) {
+        this.btnShowManualEmail.addEventListener('click', () => {
+          if (this.googleLoginForm) {
+            this.googleLoginForm.classList.toggle('hidden');
+            if (!this.googleLoginForm.classList.contains('hidden') && this.googleEmailInput) {
+              this.googleEmailInput.focus();
+            }
+          }
         });
       }
 
@@ -1603,7 +1627,7 @@
         this.googleLoginForm.addEventListener('submit', (e) => {
           e.preventDefault();
           const email = this.googleEmailInput.value.trim();
-          const name = this.googleNameInput.value.trim() || email.split('@')[0];
+          const name = email.split('@')[0];
           if (email) {
             this.performGoogleAccountLogin(email, name);
           }
@@ -1636,27 +1660,40 @@
         const savedAccountsJson = localStorage.getItem('notecraft_saved_google_accounts');
         const accounts = savedAccountsJson ? JSON.parse(savedAccountsJson) : [];
         
-        if (accounts.length > 0 && this.quickAccountsList) {
-          this.quickAccountsList.innerHTML = '<div style="font-size:0.8rem; font-weight:600; color:var(--text-muted); margin-bottom:6px;">저장된 계정으로 즉시 로그인:</div>';
-          accounts.forEach(acc => {
-            const btn = document.createElement('div');
-            btn.className = 'quick-account-btn';
-            btn.innerHTML = `
-              <img class="quick-acc-avatar" src="${acc.photoURL || 'https://cdn-icons-png.flaticon.com/512/3238/3238016.png'}" alt="Avatar" />
-              <div class="quick-acc-info">
-                <div class="quick-acc-name">${acc.displayName || acc.email}</div>
-                <div class="quick-acc-email">${acc.email}</div>
-              </div>
-              <i class="fa-solid fa-angle-right" style="color: var(--text-muted); font-size: 0.8rem;"></i>
-            `;
-            btn.addEventListener('click', () => {
-              this.performGoogleAccountLogin(acc.email, acc.displayName, acc.photoURL);
+        // Update Primary Card if we have recent account info
+        const primaryName = document.getElementById('primary-account-name');
+        const primaryEmail = document.getElementById('primary-account-email');
+        const primaryAvatar = document.getElementById('primary-account-avatar');
+
+        if (accounts.length > 0) {
+          const first = accounts[0];
+          if (primaryName) primaryName.textContent = first.displayName || first.email;
+          if (primaryEmail) primaryEmail.textContent = first.email;
+          if (primaryAvatar && first.photoURL) primaryAvatar.src = first.photoURL;
+        }
+
+        // Render additional saved accounts
+        if (this.savedAccountsContainer) {
+          this.savedAccountsContainer.innerHTML = '';
+          if (accounts.length > 1) {
+            accounts.slice(1).forEach(acc => {
+              const item = document.createElement('div');
+              item.className = 'account-card-item';
+              item.style.marginTop = '6px';
+              item.innerHTML = `
+                <img class="account-card-avatar" src="${acc.photoURL || 'https://cdn-icons-png.flaticon.com/512/3238/3238016.png'}" alt="Avatar" />
+                <div class="account-card-info">
+                  <div class="account-card-name">${acc.displayName || acc.email}</div>
+                  <div class="account-card-email">${acc.email}</div>
+                </div>
+                <span class="account-card-badge" style="background: var(--text-muted);">전환</span>
+              `;
+              item.addEventListener('click', () => {
+                this.performGoogleAccountLogin(acc.email, acc.displayName, acc.photoURL);
+              });
+              this.savedAccountsContainer.appendChild(item);
             });
-            this.quickAccountsList.appendChild(btn);
-          });
-          this.quickAccountsList.classList.remove('hidden');
-        } else if (this.quickAccountsList) {
-          this.quickAccountsList.classList.add('hidden');
+          }
         }
       } catch (e) {
         console.error('Failed to render quick accounts', e);
@@ -1674,8 +1711,10 @@
         photoURL
       };
 
-      // Save as active user
+      // Save as active user & remember last login
       localStorage.setItem('notecraft_active_google_user', JSON.stringify(userProfile));
+      localStorage.setItem('notecraft_last_email', email);
+      localStorage.setItem('notecraft_last_name', userProfile.displayName);
 
       // Remember in accounts history
       try {

@@ -431,52 +431,59 @@
     </div>
   </div>
 
-  <!-- 간편 원클릭 구글 로그인 모달 -->
+  <!-- 간편 원클릭 구글 로그인 모달 (타이핑 제로, 클릭 전용) -->
   <div id="google-login-modal" class="modal hidden">
     <div class="modal-backdrop" id="google-login-backdrop"></div>
     <div class="modal-content google-login-modal-content">
       <div class="google-login-modal-header">
         <div class="google-brand-header">
           <i class="fa-brands fa-google text-google"></i>
-          <span>Google 계정으로 계속</span>
+          <span>계정 선택</span>
         </div>
         <button id="btn-close-google-modal" class="btn-icon"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="google-login-modal-body">
         <p class="google-login-subtitle">
-          로그인하시면 <b>이 계정에 저장된 나만의 메모만 분리되어 안전하게 보관</b>됩니다.
+          NoteCraft로 이동할 Google 계정을 클릭하세요.
         </p>
 
-        <!-- 최근 로그인한 계정이 있을 때 빠른 선택 -->
-        <div id="quick-accounts-list" class="quick-accounts-list hidden">
-          <!-- JS로 동적 렌더링 -->
+        <!-- 브라우저 저장 계정 및 원클릭 계정 카드 목록 -->
+        <div class="account-picker-list" id="account-picker-list">
+          <div class="account-card-item" id="btn-primary-google-account">
+            <img class="account-card-avatar" id="primary-account-avatar" src="https://ui-avatars.com/api/?name=Kayden&background=4285f4&color=fff&bold=true" alt="Avatar" />
+            <div class="account-card-info">
+              <div class="account-card-name" id="primary-account-name">내 Google 계정</div>
+              <div class="account-card-email" id="primary-account-email">Google 계정으로 바로 시작</div>
+            </div>
+            <span class="account-card-badge">딸깍 로그인</span>
+          </div>
+
+          <!-- 최근 로그인했던 계정들이 있을 때 동적 삽입 -->
+          <div id="saved-accounts-container"></div>
         </div>
 
-        <form id="google-login-form" class="google-login-form">
-          <div class="form-group">
-            <label for="google-email-input">구글 이메일 주소</label>
-            <div class="input-with-icon">
-              <i class="fa-regular fa-envelope"></i>
-              <input type="email" id="google-email-input" placeholder="example@gmail.com" required autofocus />
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="google-name-input">사용자 이름 / 닉네임 (선택)</label>
-            <div class="input-with-icon">
-              <i class="fa-regular fa-user"></i>
-              <input type="text" id="google-name-input" placeholder="홍길동" />
-            </div>
-          </div>
+        <div class="account-divider">
+          <span>또는 다른 계정 사용</span>
+        </div>
 
-          <button type="submit" id="btn-submit-google-login" class="btn-google-submit">
-            <i class="fa-brands fa-google"></i>
-            <span>Google 계정으로 1초 로그인</span>
+        <button id="btn-show-manual-email" class="btn-switch-account">
+          <i class="fa-regular fa-user"></i>
+          <span>다른 구글 이메일로 전환하기</span>
+        </button>
+
+        <form id="google-login-form" class="google-login-form hidden" style="margin-top: 10px;">
+          <div class="input-with-icon">
+            <i class="fa-regular fa-envelope"></i>
+            <input type="email" id="google-email-input" placeholder="이메일 입력 (예: name@gmail.com)" />
+          </div>
+          <button type="submit" class="btn-google-submit">
+            <span>이 계정으로 전환</span>
           </button>
         </form>
 
         <div class="login-privacy-note">
           <i class="fa-solid fa-shield-halved"></i>
-          <span>계정별로 완전히 격리된 독립 저장소에 메모가 안전하게 보호됩니다.</span>
+          <span>선택한 계정의 메모만 분리되어 안전하게 보관됩니다.</span>
         </div>
       </div>
     </div>
