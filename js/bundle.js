@@ -1059,11 +1059,15 @@
     }
 
     setupCanvasResolution() {
-      const rect = this.canvas.parentElement.getBoundingClientRect();
+      const container = this.canvas.parentElement;
+      const rect = container.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       
-      this.canvas.width = (rect.width || 800) * dpr;
-      this.canvas.height = Math.max(rect.height || 1000, 1000) * dpr;
+      const width = container.clientWidth || rect.width || 800;
+      const height = Math.max(container.clientHeight || rect.height || 1000, 1000);
+
+      this.canvas.width = Math.round(width * dpr);
+      this.canvas.height = Math.round(height * dpr);
 
       this.ctx.setTransform(1, 0, 0, 1, 0, 0);
       this.ctx.scale(dpr, dpr);
@@ -1081,6 +1085,23 @@
       this.canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
       this.canvas.addEventListener('pointerup', (e) => this.onPointerUp(e));
       this.canvas.addEventListener('pointercancel', (e) => this.onPointerUp(e));
+
+      // Touch / mouse fallbacks to ensure mobile compatibility
+      this.canvas.addEventListener('touchstart', (e) => {
+        if (e.target === this.canvas) e.preventDefault();
+      }, { passive: false });
+
+      // Automatically sync canvas height if note content expands
+      const contentLayers = document.getElementById('note-content-layers');
+      if (window.ResizeObserver && contentLayers) {
+        const ro = new ResizeObserver(() => {
+          const newH = contentLayers.clientHeight;
+          if (newH > 0 && Math.abs((newH * this.dpr) - this.canvas.height) > 40) {
+            this.resizeCanvas();
+          }
+        });
+        ro.observe(contentLayers);
+      }
     }
 
     getPointerPos(e) {
@@ -1088,7 +1109,7 @@
       return {
         x: e.clientX - rect.left,
         y: e.clientY - rect.top,
-        pressure: e.pressure > 0 ? e.pressure : 0.5
+        pressure: (e.pressure && e.pressure > 0) ? e.pressure : 0.5
       };
     }
 
@@ -1096,11 +1117,14 @@
       if (e.button !== 0 && e.pointerType === 'mouse') return;
 
       this.isDrawing = true;
-      this.canvas.setPointerCapture(e.pointerId);
+      try {
+        this.canvas.setPointerCapture(e.pointerId);
+      } catch (_) {}
 
       const pos = this.getPointerPos(e);
       this.points = [pos];
       this.saveState();
+      this.drawDot(pos);
     }
 
     onPointerMove(e) {
@@ -1118,12 +1142,40 @@
         this.canvas.releasePointerCapture(e.pointerId);
       } catch (_) {}
 
-      if (this.points.length > 0) {
-        this.drawStroke(this.points, true);
+      if (this.points.length === 1) {
+        this.drawDot(this.points[0]);
       }
       this.points = [];
       this.redoStack = [];
       this.onUpdate();
+    }
+
+    drawDot(point) {
+      this.ctx.save();
+      if (this.currentTool === 'eraser') {
+        this.ctx.globalCompositeOperation = 'destination-out';
+        this.ctx.fillStyle = 'rgba(0,0,0,1)';
+        this.ctx.beginPath();
+        this.ctx.arc(point.x, point.y, this.strokeWidth * 2, 0, Math.PI * 2);
+        this.ctx.fill();
+      } else if (this.currentTool === 'highlighter') {
+        this.ctx.globalCompositeOperation = 'source-over';
+        this.ctx.globalAlpha = 0.35;
+        this.ctx.fillStyle = this.currentColor;
+        this.ctx.beginPath();
+        this.ctx.arc(point.x, point.y, this.strokeWidth * 1.75, 0, Math.PI * 2);
+        this.ctx.fill();
+      } else {
+        this.ctx.globalCompositeOperation = 'source-over';
+        this.ctx.globalAlpha = 1.0;
+        this.ctx.fillStyle = this.currentColor;
+        const pressureMultiplier = 0.6 + (point.pressure * 0.8);
+        const radius = (this.strokeWidth * pressureMultiplier) / 2;
+        this.ctx.beginPath();
+        this.ctx.arc(point.x, point.y, Math.max(radius, 1.5), 0, Math.PI * 2);
+        this.ctx.fill();
+      }
+      this.ctx.restore();
     }
 
     drawStroke(points) {
@@ -1157,9 +1209,7 @@
 
       this.ctx.beginPath();
       this.ctx.moveTo(p1.x, p1.y);
-      const midX = (p1.x + p2.x) / 2;
-      const midY = (p1.y + p2.y) / 2;
-      this.ctx.quadraticCurveTo(p1.x, p1.y, midX, midY);
+      this.ctx.lineTo(p2.x, p2.y);
       this.ctx.stroke();
 
       this.ctx.restore();
@@ -2079,13 +2129,19 @@
 
           if (mode === 'text') {
             document.body.classList.remove('canvas-active');
-          } else if (mode === 'canvas') {
+          } else {
             document.body.classList.add('canvas-active');
+          }
+
+          // Ensure canvas bounds match viewport on mode switch
+          if (this.canvas) {
+            setTimeout(() => this.canvas.resizeCanvas(), 50);
           }
         });
       });
 
       document.body.classList.add('mode-split');
+      document.body.classList.add('canvas-active');
     }
 
     setupHeaderEvents() {
@@ -2242,6 +2298,7 @@
 
       this.canvas.setPaperTemplate(note.template || 'lines');
       this.editor.render(note.blocks || []);
+      this.canvas.setupCanvasResolution();
       this.canvas.loadFromDataUrl(note.canvasData || '');
       this.sidebar.render();
     }
