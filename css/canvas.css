@@ -193,10 +193,16 @@ body.mode-text .canvas-toolbar {
 
 /* 3. Canvas Mode: GoodNotes Style - Drawing layer is primary */
 body.mode-canvas .canvas-layer {
-  pointer-events: auto;
+  pointer-events: auto !important;
+  z-index: 30 !important;
 }
 body.mode-canvas .blocks-editor-layer {
-  pointer-events: none;
+  pointer-events: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+body.mode-canvas .note-title-input {
+  pointer-events: none !important;
 }
 
 /* ==========================================================================

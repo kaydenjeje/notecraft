@@ -2129,8 +2129,16 @@
 
           if (mode === 'text') {
             document.body.classList.remove('canvas-active');
-          } else {
+            this.enableTextEditing(true);
+          } else if (mode === 'canvas') {
+            // GoodNotes Mode: Definitively disable text editing and blur all inputs
+            // to prevent tablet OS (Apple Scribble / Samsung S-Pen) from converting handwriting to text
             document.body.classList.add('canvas-active');
+            this.blurAndDisableTextEditing();
+          } else {
+            // Split mode
+            document.body.classList.add('canvas-active');
+            this.enableTextEditing(true);
           }
 
           // Ensure canvas bounds match viewport on mode switch
@@ -2142,6 +2150,21 @@
 
       document.body.classList.add('mode-split');
       document.body.classList.add('canvas-active');
+    }
+
+    blurAndDisableTextEditing() {
+      if (document.activeElement && document.activeElement.blur) {
+        document.activeElement.blur();
+      }
+      // Temporarily disable contenteditable so iPad/Galaxy Tab stylus draws directly
+      const blocks = document.querySelectorAll('.block-content');
+      blocks.forEach(b => b.setAttribute('contenteditable', 'false'));
+      if (this.titleInput) this.titleInput.blur();
+    }
+
+    enableTextEditing(enable) {
+      const blocks = document.querySelectorAll('.block-content');
+      blocks.forEach(b => b.setAttribute('contenteditable', enable ? 'true' : 'false'));
     }
 
     setupHeaderEvents() {
