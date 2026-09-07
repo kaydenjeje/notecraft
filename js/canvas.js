@@ -38,34 +38,57 @@ export class DrawingCanvas {
   }
 
   setupCanvasResolution() {
-    const rect = this.canvas.parentElement.getBoundingClientRect();
+    const container = this.canvas.parentElement;
+    const rect = container.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     
-    // Set actual resolution
-    this.canvas.width = (rect.width || 800) * dpr;
-    this.canvas.height = Math.max(rect.height || 1000, 1000) * dpr;
+    const width = Math.round(container.clientWidth || rect.width || 800);
+    const height = Math.round(container.clientHeight || rect.height || 800);
 
-    // Reset transform and scale for high DPI
-    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    this.ctx.scale(dpr, dpr);
+    this.canvas.width = Math.round(width * dpr);
+    this.canvas.height = Math.round(height * dpr);
+    this.canvas.style.width = `${width}px`;
+    this.canvas.style.height = `${height}px`;
 
     this.dpr = dpr;
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   resizeCanvas() {
-    // Save current drawing
     const currentData = this.canvas.toDataURL();
     this.setupCanvasResolution();
-    // Restore drawing
     this.loadFromDataUrl(currentData);
   }
 
   bindEvents() {
-    // Use PointerEvents for unified Mouse, Touch, and Stylus Pen support
     this.canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     this.canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
     this.canvas.addEventListener('pointerup', (e) => this.onPointerUp(e));
     this.canvas.addEventListener('pointercancel', (e) => this.onPointerUp(e));
+    this.canvas.addEventListener('lostpointercapture', (e) => this.onPointerUp(e));
+
+    this.canvas.addEventListener('touchstart', (e) => {
+      if (e.target === this.canvas) e.preventDefault();
+    }, { passive: false });
+    this.canvas.addEventListener('touchmove', (e) => {
+      if (e.target === this.canvas) e.preventDefault();
+    }, { passive: false });
+
+    // Sync canvas resolution if container changes size
+    const contentLayers = document.getElementById('note-content-layers');
+    if (window.ResizeObserver && contentLayers) {
+      const ro = new ResizeObserver(() => {
+        if (this.isDrawing) return;
+        const newH = contentLayers.clientHeight;
+        const newW = contentLayers.clientWidth;
+        const curH = this.canvas.height / (this.dpr || 1);
+        const curW = this.canvas.width / (this.dpr || 1);
+        if (newH > 0 && (Math.abs(newH - curH) > 30 || Math.abs(newW - curW) > 30)) {
+          this.resizeCanvas();
+        }
+      });
+      ro.observe(contentLayers);
+    }
   }
 
   getPointerPos(e) {
@@ -73,57 +96,92 @@ export class DrawingCanvas {
     const clientX = e.clientX ?? (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
     const clientY = e.clientY ?? (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
 
-    // Logical dimensions of the canvas in CSS pixels
     const logicalWidth = this.canvas.width / (this.dpr || 1);
     const logicalHeight = this.canvas.height / (this.dpr || 1);
 
-    // Calculate exact scaling ratio between rendered CSS element size and logical canvas size
     const scaleX = rect.width > 0 ? (logicalWidth / rect.width) : 1;
     const scaleY = rect.height > 0 ? (logicalHeight / rect.height) : 1;
+
+    let pressure = 0.5;
+    if (typeof e.pressure === 'number' && e.pressure > 0) {
+      pressure = e.pressure;
+    }
 
     return {
       x: (clientX - rect.left) * scaleX,
       y: (clientY - rect.top) * scaleY,
-      pressure: e.pressure > 0 ? e.pressure : 0.5
+      pressure: Math.min(Math.max(pressure, 0.1), 1.0)
     };
   }
 
   onPointerDown(e) {
-    // Only handle primary pointer (e.g. left click or single touch)
     if (e.button !== 0 && e.pointerType === 'mouse') return;
+    if (this.isDrawing) return;
 
+    this.activePointerId = e.pointerId;
     this.isDrawing = true;
-    this.canvas.setPointerCapture(e.pointerId);
+    try {
+      this.canvas.setPointerCapture(e.pointerId);
+    } catch (_) {}
 
     const pos = this.getPointerPos(e);
     this.points = [pos];
-
-    this.saveState(); // Save current canvas for undo before new stroke
+    this.saveState();
+    this.drawDot(pos);
   }
 
   onPointerMove(e) {
     if (!this.isDrawing) return;
+    if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
 
     const pos = this.getPointerPos(e);
     this.points.push(pos);
-
     this.drawStroke(this.points);
   }
 
   onPointerUp(e) {
     if (!this.isDrawing) return;
+    if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
+
     this.isDrawing = false;
+    this.activePointerId = null;
     try {
       this.canvas.releasePointerCapture(e.pointerId);
     } catch (_) {}
 
-    // Finalize stroke
-    if (this.points.length > 0) {
-      this.drawStroke(this.points, true);
+    if (this.points.length === 1) {
+      this.drawDot(this.points[0]);
     }
     this.points = [];
-    this.redoStack = []; // Clear redo on new action
+    this.redoStack = [];
     this.onUpdate();
+  }
+
+  drawDot(point) {
+    this.ctx.save();
+    if (this.currentTool === 'eraser') {
+      this.ctx.globalCompositeOperation = 'destination-out';
+      this.ctx.fillStyle = 'rgba(0,0,0,1)';
+      this.ctx.beginPath();
+      this.ctx.arc(point.x, point.y, (this.strokeWidth * 4) / 2, 0, Math.PI * 2);
+      this.ctx.fill();
+    } else if (this.currentTool === 'highlighter') {
+      this.ctx.globalCompositeOperation = 'source-over';
+      this.ctx.globalAlpha = 0.35;
+      this.ctx.fillStyle = this.currentColor;
+      this.ctx.beginPath();
+      this.ctx.arc(point.x, point.y, (this.strokeWidth * 3.5) / 2, 0, Math.PI * 2);
+      this.ctx.fill();
+    } else {
+      this.ctx.globalCompositeOperation = 'source-over';
+      this.ctx.globalAlpha = 1.0;
+      this.ctx.fillStyle = this.currentColor;
+      const radius = (this.strokeWidth * (0.6 + (point.pressure * 0.8))) / 2;
+      this.ctx.beginPath();
+      this.ctx.arc(point.x, point.y, Math.max(radius, 1.5), 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+    this.ctx.restore();
   }
 
   drawStroke(points, isFinal = false) {
@@ -197,11 +255,9 @@ export class DrawingCanvas {
 
   clear() {
     this.saveState();
-    this.ctx.save();
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.ctx.restore();
-    this.ctx.scale(this.dpr, this.dpr);
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.redoStack = [];
     this.onUpdate();
   }
@@ -213,22 +269,18 @@ export class DrawingCanvas {
     }
     const img = new Image();
     img.onload = () => {
-      this.ctx.save();
       this.ctx.setTransform(1, 0, 0, 1, 0, 0);
       this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-      this.ctx.drawImage(img, 0, 0);
-      this.ctx.restore();
-      this.ctx.scale(this.dpr, this.dpr);
+      this.ctx.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
+      this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     };
     img.src = dataUrl;
   }
 
   clearDirectly() {
-    this.ctx.save();
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.ctx.restore();
-    this.ctx.scale(this.dpr, this.dpr);
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
   }
 
   getDataUrl() {

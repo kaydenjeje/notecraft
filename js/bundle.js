@@ -1036,6 +1036,7 @@
       this.paperContainer = document.getElementById('note-paper-container');
 
       this.isDrawing = false;
+      this.activePointerId = null;
       this.currentTool = 'pen';
       this.currentColor = '#1e293b';
       this.strokeWidth = 4;
@@ -1063,15 +1064,16 @@
       const rect = container.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       
-      const width = container.clientWidth || rect.width || 800;
-      const height = Math.max(container.clientHeight || rect.height || 1000, 1000);
+      const width = Math.round(container.clientWidth || rect.width || 800);
+      const height = Math.round(container.clientHeight || rect.height || 800);
 
       this.canvas.width = Math.round(width * dpr);
       this.canvas.height = Math.round(height * dpr);
+      this.canvas.style.width = `${width}px`;
+      this.canvas.style.height = `${height}px`;
 
-      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-      this.ctx.scale(dpr, dpr);
       this.dpr = dpr;
+      this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
     resizeCanvas() {
@@ -1085,9 +1087,13 @@
       this.canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
       this.canvas.addEventListener('pointerup', (e) => this.onPointerUp(e));
       this.canvas.addEventListener('pointercancel', (e) => this.onPointerUp(e));
+      this.canvas.addEventListener('lostpointercapture', (e) => this.onPointerUp(e));
 
       // Touch / mouse fallbacks to ensure mobile compatibility
       this.canvas.addEventListener('touchstart', (e) => {
+        if (e.target === this.canvas) e.preventDefault();
+      }, { passive: false });
+      this.canvas.addEventListener('touchmove', (e) => {
         if (e.target === this.canvas) e.preventDefault();
       }, { passive: false });
 
@@ -1095,8 +1101,12 @@
       const contentLayers = document.getElementById('note-content-layers');
       if (window.ResizeObserver && contentLayers) {
         const ro = new ResizeObserver(() => {
+          if (this.isDrawing) return;
           const newH = contentLayers.clientHeight;
-          if (newH > 0 && Math.abs((newH * this.dpr) - this.canvas.height) > 40) {
+          const newW = contentLayers.clientWidth;
+          const curH = this.canvas.height / (this.dpr || 1);
+          const curW = this.canvas.width / (this.dpr || 1);
+          if (newH > 0 && (Math.abs(newH - curH) > 30 || Math.abs(newW - curW) > 30)) {
             this.resizeCanvas();
           }
         });
@@ -1117,16 +1127,23 @@
       const scaleX = rect.width > 0 ? (logicalWidth / rect.width) : 1;
       const scaleY = rect.height > 0 ? (logicalHeight / rect.height) : 1;
 
+      let pressure = 0.5;
+      if (typeof e.pressure === 'number' && e.pressure > 0) {
+        pressure = e.pressure;
+      }
+
       return {
         x: (clientX - rect.left) * scaleX,
         y: (clientY - rect.top) * scaleY,
-        pressure: (e.pressure && e.pressure > 0) ? e.pressure : 0.5
+        pressure: Math.min(Math.max(pressure, 0.1), 1.0)
       };
     }
 
     onPointerDown(e) {
       if (e.button !== 0 && e.pointerType === 'mouse') return;
+      if (this.isDrawing) return;
 
+      this.activePointerId = e.pointerId;
       this.isDrawing = true;
       try {
         this.canvas.setPointerCapture(e.pointerId);
@@ -1140,6 +1157,7 @@
 
     onPointerMove(e) {
       if (!this.isDrawing) return;
+      if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
 
       const pos = this.getPointerPos(e);
       this.points.push(pos);
@@ -1148,7 +1166,10 @@
 
     onPointerUp(e) {
       if (!this.isDrawing) return;
+      if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
+
       this.isDrawing = false;
+      this.activePointerId = null;
       try {
         this.canvas.releasePointerCapture(e.pointerId);
       } catch (_) {}
@@ -1167,21 +1188,20 @@
         this.ctx.globalCompositeOperation = 'destination-out';
         this.ctx.fillStyle = 'rgba(0,0,0,1)';
         this.ctx.beginPath();
-        this.ctx.arc(point.x, point.y, this.strokeWidth * 2, 0, Math.PI * 2);
+        this.ctx.arc(point.x, point.y, (this.strokeWidth * 4) / 2, 0, Math.PI * 2);
         this.ctx.fill();
       } else if (this.currentTool === 'highlighter') {
         this.ctx.globalCompositeOperation = 'source-over';
         this.ctx.globalAlpha = 0.35;
         this.ctx.fillStyle = this.currentColor;
         this.ctx.beginPath();
-        this.ctx.arc(point.x, point.y, this.strokeWidth * 1.75, 0, Math.PI * 2);
+        this.ctx.arc(point.x, point.y, (this.strokeWidth * 3.5) / 2, 0, Math.PI * 2);
         this.ctx.fill();
       } else {
         this.ctx.globalCompositeOperation = 'source-over';
         this.ctx.globalAlpha = 1.0;
         this.ctx.fillStyle = this.currentColor;
-        const pressureMultiplier = 0.6 + (point.pressure * 0.8);
-        const radius = (this.strokeWidth * pressureMultiplier) / 2;
+        const radius = (this.strokeWidth * (0.6 + (point.pressure * 0.8))) / 2;
         this.ctx.beginPath();
         this.ctx.arc(point.x, point.y, Math.max(radius, 1.5), 0, Math.PI * 2);
         this.ctx.fill();
@@ -1251,11 +1271,9 @@
 
     clear() {
       this.saveState();
-      this.ctx.save();
       this.ctx.setTransform(1, 0, 0, 1, 0, 0);
       this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-      this.ctx.restore();
-      this.ctx.scale(this.dpr, this.dpr);
+      this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
       this.redoStack = [];
       this.onUpdate();
     }
@@ -1267,22 +1285,18 @@
       }
       const img = new Image();
       img.onload = () => {
-        this.ctx.save();
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        this.ctx.drawImage(img, 0, 0);
-        this.ctx.restore();
-        this.ctx.scale(this.dpr, this.dpr);
+        this.ctx.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
       };
       img.src = dataUrl;
     }
 
     clearDirectly() {
-      this.ctx.save();
       this.ctx.setTransform(1, 0, 0, 1, 0, 0);
       this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-      this.ctx.restore();
-      this.ctx.scale(this.dpr, this.dpr);
+      this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     }
 
     getDataUrl() {
