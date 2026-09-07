@@ -86,24 +86,76 @@
   };
 
   class StorageManager {
+    static currentUser = null;
+
+    static setCurrentUser(user) {
+      this.currentUser = user;
+    }
+
+    static getNotesKey() {
+      if (this.currentUser && this.currentUser.uid) {
+        return `${STORAGE_KEYS.NOTES}_user_${this.currentUser.uid}`;
+      }
+      return STORAGE_KEYS.NOTES;
+    }
+
+    static getCurrentIdKey() {
+      if (this.currentUser && this.currentUser.uid) {
+        return `${STORAGE_KEYS.CURRENT_ID}_user_${this.currentUser.uid}`;
+      }
+      return STORAGE_KEYS.CURRENT_ID;
+    }
+
     static getNotes() {
       try {
-        const data = localStorage.getItem(STORAGE_KEYS.NOTES);
+        const key = this.getNotesKey();
+        const data = localStorage.getItem(key);
         if (!data) {
-          const initial = [WELCOME_NOTE];
-          localStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(initial));
+          // If logged-in user, create personalized initial note
+          const initial = this.currentUser ? [
+            {
+              id: 'note_user_' + Date.now(),
+              title: `${this.currentUser.displayName || '내'} 첫 번째 메모 🔒`,
+              emoji: '✨',
+              isFavorite: true,
+              template: 'lines',
+              blocks: [
+                {
+                  id: 'b_u1',
+                  type: 'h1',
+                  content: `${this.currentUser.displayName || '내'} 클라우드 개인 서재`
+                },
+                {
+                  id: 'b_u2',
+                  type: 'callout',
+                  content: `🔒 <b>구글 계정(${this.currentUser.email || ''}) 전용 보관함입니다.</b><br>오직 이 계정으로 로그인했을 때만 확인하고 편집할 수 있으며, PC와 스마트폰에서 실시간으로 동기화됩니다.`
+                },
+                {
+                  id: 'b_u3',
+                  type: 'todo',
+                  content: '모바일 기기에서도 동일한 구글 계정으로 로그인해보기',
+                  checked: false
+                }
+              ],
+              canvasData: '',
+              createdAt: Date.now(),
+              updatedAt: Date.now()
+            }
+          ] : [WELCOME_NOTE];
+          localStorage.setItem(key, JSON.stringify(initial));
           return initial;
         }
         return JSON.parse(data);
       } catch (e) {
-        console.error('Failed to load notes from localStorage', e);
+        console.error('Failed to load notes from storage', e);
         return [WELCOME_NOTE];
       }
     }
 
     static saveNotes(notes) {
       try {
-        localStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(notes));
+        const key = this.getNotesKey();
+        localStorage.setItem(key, JSON.stringify(notes));
       } catch (e) {
         console.error('Failed to save notes', e);
       }
@@ -125,6 +177,11 @@
         notes.unshift(updatedNote);
       }
       this.saveNotes(notes);
+
+      // Trigger Cloud Firestore Sync if online
+      if (window.cloudManager && window.cloudManager.isCloudActive() && this.currentUser) {
+        window.cloudManager.syncNoteToFirestore(this.currentUser.uid, updatedNote);
+      }
     }
 
     static createNewNote() {
@@ -150,6 +207,11 @@
       notes.unshift(newNote);
       this.saveNotes(notes);
       this.setCurrentNoteId(newNote.id);
+
+      if (window.cloudManager && window.cloudManager.isCloudActive() && this.currentUser) {
+        window.cloudManager.syncNoteToFirestore(this.currentUser.uid, newNote);
+      }
+
       return newNote;
     }
 
@@ -161,18 +223,25 @@
         return newNote.id;
       }
       this.saveNotes(notes);
+
+      if (window.cloudManager && window.cloudManager.isCloudActive() && this.currentUser) {
+        window.cloudManager.deleteNoteFromFirestore(this.currentUser.uid, id);
+      }
+
       return notes[0].id;
     }
 
     static getCurrentNoteId() {
-      const id = localStorage.getItem(STORAGE_KEYS.CURRENT_ID);
+      const key = this.getCurrentIdKey();
+      const id = localStorage.getItem(key);
       if (id && this.getNoteById(id)) return id;
       const notes = this.getNotes();
       return notes[0] ? notes[0].id : null;
     }
 
     static setCurrentNoteId(id) {
-      localStorage.setItem(STORAGE_KEYS.CURRENT_ID, id);
+      const key = this.getCurrentIdKey();
+      localStorage.setItem(key, id);
     }
 
     static getTheme() {
@@ -1428,7 +1497,295 @@
   }
 
   // =========================================================================
-  // 5. Main Application Orchestrator
+  // 5. Firebase Cloud & Google Authentication Manager
+  // =========================================================================
+  class FirebaseCloudManager {
+    constructor(appInstance) {
+      this.app = appInstance;
+      this.auth = null;
+      this.db = null;
+      this.currentUser = null;
+      this.isInitialized = false;
+
+      // DOM Elements
+      this.btnGoogleLogin = document.getElementById('btn-google-login');
+      this.userProfileChip = document.getElementById('user-profile-chip');
+      this.userAvatar = document.getElementById('user-avatar');
+      this.userName = document.getElementById('user-name');
+      this.btnLogout = document.getElementById('btn-logout');
+      this.btnCloudSettings = document.getElementById('btn-cloud-settings');
+      this.cloudModal = document.getElementById('cloud-modal');
+      this.btnCloseCloud = document.getElementById('btn-close-cloud');
+      this.cloudBackdrop = document.getElementById('cloud-backdrop');
+      this.configTextarea = document.getElementById('firebase-config-json');
+      this.btnSaveConfig = document.getElementById('btn-save-cloud-config');
+      this.btnResetConfig = document.getElementById('btn-reset-cloud-config');
+      this.statusText = document.getElementById('cloud-status-text');
+      this.statusDot = document.querySelector('.status-indicator-dot');
+
+      this.init();
+    }
+
+    init() {
+      this.bindModalEvents();
+      this.tryInitFirebase();
+    }
+
+    bindModalEvents() {
+      if (this.btnCloudSettings) {
+        this.btnCloudSettings.addEventListener('click', () => {
+          this.cloudModal.classList.remove('hidden');
+          const savedConfig = localStorage.getItem('notecraft_firebase_config');
+          if (savedConfig) {
+            this.configTextarea.value = savedConfig;
+          }
+        });
+      }
+
+      if (this.btnCloseCloud) {
+        this.btnCloseCloud.addEventListener('click', () => {
+          this.cloudModal.classList.add('hidden');
+        });
+      }
+
+      if (this.cloudBackdrop) {
+        this.cloudBackdrop.addEventListener('click', () => {
+          this.cloudModal.classList.add('hidden');
+        });
+      }
+
+      if (this.btnSaveConfig) {
+        this.btnSaveConfig.addEventListener('click', () => {
+          this.handleSaveConfig();
+        });
+      }
+
+      if (this.btnResetConfig) {
+        this.btnResetConfig.addEventListener('click', () => {
+          if (confirm('Firebase 설정을 초기화하고 로컬 모드로 전환하시겠습니까?')) {
+            localStorage.removeItem('notecraft_firebase_config');
+            location.reload();
+          }
+        });
+      }
+
+      if (this.btnGoogleLogin) {
+        this.btnGoogleLogin.addEventListener('click', () => {
+          this.loginWithGoogle();
+        });
+      }
+
+      if (this.btnLogout) {
+        this.btnLogout.addEventListener('click', () => {
+          this.logout();
+        });
+      }
+    }
+
+    parseFirebaseConfig(rawText) {
+      if (!rawText) return null;
+      try {
+        // 1. Try direct JSON parse
+        return JSON.parse(rawText);
+      } catch (_) {}
+
+      // 2. Extract key-value pairs with regex (supports JS object syntax like apiKey: "...")
+      const config = {};
+      const keys = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'];
+      keys.forEach(k => {
+        const regex = new RegExp(`['"]?${k}['"]?\\s*:\\s*['"\`]([^'"\`]+)['"\`]`);
+        const match = rawText.match(regex);
+        if (match && match[1]) {
+          config[k] = match[1].trim();
+        }
+      });
+
+      if (config.apiKey && config.projectId) {
+        return config;
+      }
+      return null;
+    }
+
+    handleSaveConfig() {
+      const raw = this.configTextarea.value.trim();
+      const parsed = this.parseFirebaseConfig(raw);
+
+      if (!parsed) {
+        alert('올바른 Firebase 설정(apiKey, projectId 등)을 찾을 수 없습니다. 형식을 확인해주세요.');
+        return;
+      }
+
+      localStorage.setItem('notecraft_firebase_config', JSON.stringify(parsed, null, 2));
+      alert('Firebase 설정이 저장되었습니다! 페이지를 새로고침하여 연결합니다.');
+      location.reload();
+    }
+
+    tryInitFirebase() {
+      if (typeof firebase === 'undefined') {
+        this.updateStatus(false, 'Firebase SDK를 로드할 수 없습니다.');
+        return;
+      }
+
+      const savedConfig = localStorage.getItem('notecraft_firebase_config');
+      if (!savedConfig) {
+        this.updateStatus(false, '로컬 저장소 모드 (Firebase 미설정)');
+        return;
+      }
+
+      try {
+        const config = JSON.parse(savedConfig);
+        if (!firebase.apps.length) {
+          firebase.initializeApp(config);
+        }
+        this.auth = firebase.auth();
+        this.db = firebase.firestore();
+        this.isInitialized = true;
+
+        this.updateStatus(true, 'Firebase 연결됨 (Google 로그인 대기 중)');
+
+        // Listen for authentication changes
+        this.auth.onAuthStateChanged(async (user) => {
+          if (user) {
+            await this.handleUserSignedIn(user);
+          } else {
+            this.handleUserSignedOut();
+          }
+        });
+      } catch (err) {
+        console.error('Firebase Init Error:', err);
+        this.updateStatus(false, 'Firebase 연결 실패: ' + (err.message || ''));
+      }
+    }
+
+    updateStatus(isOnline, message) {
+      if (this.statusDot) {
+        if (isOnline) this.statusDot.classList.add('online');
+        else this.statusDot.classList.remove('online');
+      }
+      if (this.statusText) {
+        this.statusText.textContent = `상태: ${message}`;
+      }
+    }
+
+    isCloudActive() {
+      return this.isInitialized && this.currentUser !== null;
+    }
+
+    async handleUserSignedIn(user) {
+      this.currentUser = user;
+      StorageManager.setCurrentUser(user);
+
+      // UI Update
+      if (this.btnGoogleLogin) this.btnGoogleLogin.classList.add('hidden');
+      if (this.userProfileChip) {
+        this.userProfileChip.classList.remove('hidden');
+        if (this.userAvatar) this.userAvatar.src = user.photoURL || 'https://cdn-icons-png.flaticon.com/512/3238/3238016.png';
+        if (this.userName) this.userName.textContent = user.displayName || user.email || '사용자';
+      }
+
+      this.updateStatus(true, `클라우드 동기화 활성 (${user.email})`);
+
+      // Load User's notes from Firestore
+      await this.loadNotesFromFirestore(user.uid);
+    }
+
+    handleUserSignedOut() {
+      this.currentUser = null;
+      StorageManager.setCurrentUser(null);
+
+      // UI Update
+      if (this.btnGoogleLogin) this.btnGoogleLogin.classList.remove('hidden');
+      if (this.userProfileChip) this.userProfileChip.classList.add('hidden');
+
+      this.updateStatus(false, '로그아웃됨 (로컬 저장소 모드)');
+
+      // Reload local notes
+      this.app.sidebar.render();
+      const currentId = StorageManager.getCurrentNoteId();
+      this.app.switchNote(currentId);
+    }
+
+    async loginWithGoogle() {
+      if (!this.isInitialized) {
+        // Prompt user to configure Firebase first
+        alert('먼저 Firebase 클라우드 설정을 입력하셔야 Google 로그인을 사용하실 수 있습니다.\n설정 창을 열어드립니다.');
+        this.cloudModal.classList.remove('hidden');
+        return;
+      }
+
+      try {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+        await this.auth.signInWithPopup(provider);
+      } catch (err) {
+        console.error('Google Sign-In Error:', err);
+        // Fallback for mobile popup blocking: signInWithRedirect
+        if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
+          const provider = new firebase.auth.GoogleAuthProvider();
+          await this.auth.signInWithRedirect(provider);
+        } else {
+          alert('Google 로그인 오류: ' + (err.message || '인증에 실패했습니다.'));
+        }
+      }
+    }
+
+    async logout() {
+      if (this.auth) {
+        await this.auth.signOut();
+      }
+    }
+
+    // --- Firestore Data Operations ---
+    async loadNotesFromFirestore(uid) {
+      if (!this.db) return;
+      try {
+        const snapshot = await this.db.collection('users').doc(uid).collection('notes').get();
+        if (!snapshot.empty) {
+          const remoteNotes = [];
+          snapshot.forEach(doc => {
+            remoteNotes.push(doc.data());
+          });
+          // Sort by updatedAt desc
+          remoteNotes.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+          StorageManager.saveNotes(remoteNotes);
+        } else {
+          // If no remote notes yet, push initial local notes to Firestore
+          const currentNotes = StorageManager.getNotes();
+          for (const n of currentNotes) {
+            await this.syncNoteToFirestore(uid, n);
+          }
+        }
+
+        // Refresh UI
+        this.app.sidebar.render();
+        const currentId = StorageManager.getCurrentNoteId();
+        this.app.switchNote(currentId);
+      } catch (err) {
+        console.error('Failed to load notes from Firestore', err);
+      }
+    }
+
+    async syncNoteToFirestore(uid, note) {
+      if (!this.db || !uid || !note) return;
+      try {
+        await this.db.collection('users').doc(uid).collection('notes').doc(note.id).set(note, { merge: true });
+      } catch (err) {
+        console.error('Firestore Sync Error:', err);
+      }
+    }
+
+    async deleteNoteFromFirestore(uid, noteId) {
+      if (!this.db || !uid || !noteId) return;
+      try {
+        await this.db.collection('users').doc(uid).collection('notes').doc(noteId).delete();
+      } catch (err) {
+        console.error('Firestore Delete Error:', err);
+      }
+    }
+  }
+
+  // =========================================================================
+  // 6. Main Application Orchestrator
   // =========================================================================
   class NoteCraftApp {
     constructor() {
@@ -1492,6 +1849,10 @@
       this.setupHeaderEvents();
       this.setupEmojiPicker();
       this.setupMobileModal();
+
+      // Initialize Firebase Cloud & Google Auth
+      this.cloud = new FirebaseCloudManager(this);
+      window.cloudManager = this.cloud;
 
       const initialId = StorageManager.getCurrentNoteId();
       this.switchNote(initialId);
