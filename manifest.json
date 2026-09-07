@@ -1,0 +1,22 @@
+{
+  "name": "NoteCraft - 노션 & 굿노트",
+  "short_name": "NoteCraft",
+  "description": "노션 스타일 블록 메모와 굿노트 스타일 펜 필기가 결합된 스마트 노트",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3b82f6",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3238/3238016.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3238/3238016.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

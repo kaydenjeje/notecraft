@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>NoteCraft - 노션 & 굿노트 하이브리드 노트</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#3b82f6">
+  <link rel="manifest" href="manifest.json">
+  <!-- Google Fonts: Pretendard -->
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <!-- FontAwesome 6 for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/editor.css">
+  <link rel="stylesheet" href="css/canvas.css">
+</head>
+<body class="theme-light">
+  <div id="app-container">
+    <!-- 사이드바 -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <div class="workspace-title">
+          <div class="app-logo">
+            <i class="fa-solid fa-feather-pointed"></i>
+          </div>
+          <span class="workspace-name">NoteCraft</span>
+        </div>
+        <button id="btn-collapse-sidebar" class="btn-icon" title="사이드바 접기">
+          <i class="fa-solid fa-angles-left"></i>
+        </button>
+      </div>
+
+      <div class="sidebar-search">
+        <i class="fa-solid fa-magnifying-glass search-icon"></i>
+        <input type="text" id="search-input" placeholder="노트 검색... (Ctrl+K)" />
+        <button id="btn-clear-search" class="btn-clear hidden">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="sidebar-actions">
+        <button id="btn-new-note" class="btn-primary-action">
+          <i class="fa-solid fa-plus"></i>
+          <span>새 노트 작성</span>
+        </button>
+      </div>
+
+      <div class="sidebar-nav">
+        <!-- 즐겨찾기 섹션 -->
+        <div class="nav-section" id="favorites-section">
+          <div class="section-header">
+            <i class="fa-solid fa-star section-icon text-amber"></i>
+            <span>즐겨찾기</span>
+          </div>
+          <ul id="favorites-list" class="doc-list">
+            <!-- 자바스크립트로 동적 렌더링 -->
+          </ul>
+        </div>
+
+        <!-- 전체 노트 섹션 -->
+        <div class="nav-section" id="all-notes-section">
+          <div class="section-header">
+            <i class="fa-solid fa-book-open section-icon"></i>
+            <span>모든 노트 (<span id="notes-count">0</span>)</span>
+          </div>
+          <ul id="notes-list" class="doc-list">
+            <!-- 자바스크립트로 동적 렌더링 -->
+          </ul>
+        </div>
+      </div>
+
+      <!-- 사이드바 하단 도구 -->
+      <div class="sidebar-footer">
+        <button id="btn-theme-toggle" class="footer-btn" title="다크/라이트 모드 전환">
+          <i class="fa-solid fa-moon theme-icon"></i>
+          <span class="theme-text">다크 모드</span>
+        </button>
+        <button id="btn-backup-export" class="footer-btn" title="데이터 백업 다운로드">
+          <i class="fa-solid fa-file-export"></i>
+          <span>백업</span>
+        </button>
+        <button id="btn-backup-import" class="footer-btn" title="데이터 복원">
+          <i class="fa-solid fa-file-import"></i>
+          <span>가져오기</span>
+        </button>
+        <input type="file" id="import-file-input" accept=".json" style="display: none;" />
+      </div>
+    </aside>
+
+    <!-- 메인 워크스페이스 컨텐츠 -->
+    <main id="main-content" class="main-content">
+      <!-- 상단 네비게이션 헤더 -->
+      <header class="content-header">
+        <div class="header-left">
+          <button id="btn-expand-sidebar" class="btn-icon" title="사이드바 열기">
+            <i class="fa-solid fa-bars"></i>
+          </button>
+          <div class="breadcrumb" id="header-breadcrumb">
+            <span class="doc-icon"><i class="fa-regular fa-file-lines"></i></span>
+            <span class="doc-title-breadcrumb" id="current-doc-breadcrumb">제목 없음</span>
+          </div>
+        </div>
+
+        <div class="header-center">
+          <!-- 모드 전환 탭 (노션 텍스트 / 굿노트 필기 / 둘 다) -->
+          <div class="view-mode-selector">
+            <button class="mode-btn active" data-mode="split" title="텍스트와 드로잉 동시 사용">
+              <i class="fa-solid fa-layer-group"></i>
+              <span class="mode-label">통합 모드</span>
+            </button>
+            <button class="mode-btn" data-mode="text" title="노션 스타일 텍스트 전용">
+              <i class="fa-solid fa-align-left"></i>
+              <span class="mode-label">노션 모드</span>
+            </button>
+            <button class="mode-btn" data-mode="canvas" title="굿노트 스타일 펜 필기 전용">
+              <i class="fa-solid fa-pen-nib"></i>
+              <span class="mode-label">굿노트 모드</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="header-right">
+          <div class="save-indicator" id="save-status">
+            <i class="fa-solid fa-check"></i>
+            <span>저장됨</span>
+          </div>
+          <button id="btn-mobile-connect" class="btn-icon" title="스마트폰/태블릿으로 열기 (QR 코드)">
+            <i class="fa-solid fa-mobile-screen"></i>
+          </button>
+          <button id="btn-toggle-favorite" class="btn-icon" title="즐겨찾기 토글">
+            <i class="fa-regular fa-star" id="favorite-icon"></i>
+          </button>
+          <button id="btn-export-pdf" class="btn-icon" title="인쇄 / PDF 저장">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+          </button>
+          <button id="btn-delete-note" class="btn-icon text-danger" title="노트 삭제">
+            <i class="fa-regular fa-trash-can"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- 에디터 & 캔버스 컨테이너 -->
+      <div class="workspace-body" id="workspace-body">
+        <!-- 굿노트 드로잉 도구 상단 바 -->
+        <div id="canvas-toolbar" class="canvas-toolbar">
+          <div class="tool-group">
+            <button class="canvas-tool-btn active" data-tool="pen" title="만년필 / 볼펜">
+              <i class="fa-solid fa-pen"></i>
+            </button>
+            <button class="canvas-tool-btn" data-tool="highlighter" title="형광펜">
+              <i class="fa-solid fa-highlighter"></i>
+            </button>
+            <button class="canvas-tool-btn" data-tool="eraser" title="지우개">
+              <i class="fa-solid fa-eraser"></i>
+            </button>
+          </div>
+
+          <div class="toolbar-divider"></div>
+
+          <!-- 색상 프리셋 -->
+          <div class="color-picker-group" id="color-preset-group">
+            <button class="color-swatch active" data-color="#1e293b" style="background-color: #1e293b;"></button>
+            <button class="color-swatch" data-color="#2563eb" style="background-color: #2563eb;"></button>
+            <button class="color-swatch" data-color="#dc2626" style="background-color: #dc2626;"></button>
+            <button class="color-swatch" data-color="#16a34a" style="background-color: #16a34a;"></button>
+            <button class="color-swatch" data-color="#d97706" style="background-color: #d97706;"></button>
+            <button class="color-swatch" data-color="#9333ea" style="background-color: #9333ea;"></button>
+            <input type="color" id="custom-color-picker" class="custom-color-input" title="기타 색상 선택" value="#1e293b">
+          </div>
+
+          <div class="toolbar-divider"></div>
+
+          <!-- 굵기 조절 -->
+          <div class="stroke-width-group">
+            <button class="stroke-btn" data-size="2" title="가는 펜 (2px)">
+              <span class="stroke-dot" style="width: 4px; height: 4px;"></span>
+            </button>
+            <button class="stroke-btn active" data-size="4" title="보통 펜 (4px)">
+              <span class="stroke-dot" style="width: 7px; height: 7px;"></span>
+            </button>
+            <button class="stroke-btn" data-size="8" title="굵은 펜 (8px)">
+              <span class="stroke-dot" style="width: 11px; height: 11px;"></span>
+            </button>
+          </div>
+
+          <div class="toolbar-divider"></div>
+
+          <!-- 속지 템플릿 선택기 -->
+          <div class="template-selector">
+            <i class="fa-solid fa-table-cells"></i>
+            <select id="paper-template-select" title="속지 템플릿 변경">
+              <option value="blank">무지 속지 (Blank)</option>
+              <option value="lines" selected>가로줄 노트 (Lines)</option>
+              <option value="grid">모눈종이 (Grid)</option>
+              <option value="dots">도트 그리드 (Dots)</option>
+            </select>
+          </div>
+
+          <div class="toolbar-divider"></div>
+
+          <!-- 실행 취소 / 다시 실행 / 전체 지우기 -->
+          <div class="history-group">
+            <button id="btn-undo" class="canvas-action-btn" title="실행 취소 (Ctrl+Z)">
+              <i class="fa-solid fa-rotate-left"></i>
+            </button>
+            <button id="btn-redo" class="canvas-action-btn" title="다시 실행 (Ctrl+Y)">
+              <i class="fa-solid fa-rotate-right"></i>
+            </button>
+            <button id="btn-clear-canvas" class="canvas-action-btn text-danger" title="캔버스 전체 지우기">
+              <i class="fa-regular fa-trash-can"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- 스크롤 가능한 노트 뷰포트 -->
+        <div class="note-viewport" id="note-viewport">
+          <div class="note-paper-container" id="note-paper-container">
+            <!-- 페이지 헤더: 아이콘, 커버, 제목 -->
+            <div class="note-page-header">
+              <div class="page-emoji-selector" id="page-emoji" title="아이콘 변경">📝</div>
+              <input type="text" id="note-title-input" class="note-title-input" placeholder="제목을 입력하세요..." />
+              <div class="note-meta">
+                <span id="note-updated-at">최근 수정: 방금 전</span>
+              </div>
+            </div>
+
+            <!-- 듀얼 레이어 컨테이너 (텍스트 블록 & 캔버스 오버레이) -->
+            <div class="note-content-layers" id="note-content-layers">
+              <!-- 1. 노션 스타일 블록 에디터 레이어 -->
+              <div class="blocks-editor-layer" id="blocks-editor">
+                <!-- 블록들이 동적으로 추가됩니다 -->
+              </div>
+
+              <!-- 2. 굿노트 스타일 캔버스 드로잉 레이어 -->
+              <div class="canvas-layer" id="canvas-layer">
+                <canvas id="drawing-canvas"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- 슬래시 명령어 팝업 메뉴 (노션 스타일) -->
+  <div id="slash-menu" class="slash-menu hidden">
+    <div class="slash-menu-header">기본 블록</div>
+    <div class="slash-menu-list" id="slash-menu-list">
+      <div class="slash-item active" data-type="text">
+        <div class="slash-icon"><i class="fa-solid fa-paragraph"></i></div>
+        <div class="slash-text">
+          <div class="slash-title">일반 텍스트</div>
+          <div class="slash-desc">일반적인 문단을 작성합니다.</div>
+        </div>
+      </div>
+      <div class="slash-item" data-type="h1">
+        <div class="slash-icon">H1</div>
+        <div class="slash-text">
+          <div class="slash-title">제목 1</div>
+          <div class="slash-desc">가장 큰 대제목을 작성합니다.</div>
+        </div>
+      </div>
+      <div class="slash-item" data-type="h2">
+        <div class="slash-icon">H2</div>
+        <div class="slash-text">
+          <div class="slash-title">제목 2</div>
+          <div class="slash-desc">중간 크기의 섹션 제목을 작성합니다.</div>
+        </div>
+      </div>
+      <div class="slash-item" data-type="h3">
+        <div class="slash-icon">H3</div>
+        <div class="slash-text">
+          <div class="slash-title">제목 3</div>
+          <div class="slash-desc">작은 소제목을 작성합니다.</div>
+        </div>
+      </div>
+      <div class="slash-item" data-type="todo">
+        <div class="slash-icon"><i class="fa-regular fa-square-check"></i></div>
+        <div class="slash-text">
+          <div class="slash-title">할 일 목록 (To-Do)</div>
+          <div class="slash-desc">체크박스로 해야 할 일을 관리합니다.</div>
+        </div>
+      </div>
+      <div class="slash-item" data-type="bullet">
+        <div class="slash-icon"><i class="fa-solid fa-list-ul"></i></div>
+        <div class="slash-text">
+          <div class="slash-title">글머리 기호 목록</div>
+          <div class="slash-desc">동그라미 기호 목록을 만듭니다.</div>
+        </div>
+      </div>
+      <div class="slash-item" data-type="numbered">
+        <div class="slash-icon"><i class="fa-solid fa-list-ol"></i></div>
+        <div class="slash-text">
+          <div class="slash-title">번호 매기기 목록</div>
+          <div class="slash-desc">숫자 순서가 매겨진 목록을 만듭니다.</div>
+        </div>
+      </div>
+      <div class="slash-item" data-type="quote">
+        <div class="slash-icon"><i class="fa-solid fa-quote-left"></i></div>
+        <div class="slash-text">
+          <div class="slash-title">인용문 (Quote)</div>
+          <div class="slash-desc">중요한 구절을 강조합니다.</div>
+        </div>
+      </div>
+      <div class="slash-item" data-type="callout">
+        <div class="slash-icon"><i class="fa-regular fa-lightbulb"></i></div>
+        <div class="slash-text">
+          <div class="slash-title">콜아웃 박스 (Callout)</div>
+          <div class="slash-desc">아이콘과 배경색으로 눈에 띄게 강조합니다.</div>
+        </div>
+      </div>
+      <div class="slash-item" data-type="divider">
+        <div class="slash-icon"><i class="fa-solid fa-minus"></i></div>
+        <div class="slash-text">
+          <div class="slash-title">구분선 (Divider)</div>
+          <div class="slash-desc">콘텐츠 사이에 구분선을 긋습니다.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 플로팅 서식 툴바 (텍스트 드래그 시) -->
+  <div id="format-toolbar" class="format-toolbar hidden">
+    <button class="fmt-btn" data-command="bold" title="굵게 (Ctrl+B)"><i class="fa-solid fa-bold"></i></button>
+    <button class="fmt-btn" data-command="italic" title="기울임 (Ctrl+I)"><i class="fa-solid fa-italic"></i></button>
+    <button class="fmt-btn" data-command="underline" title="밑줄 (Ctrl+U)"><i class="fa-solid fa-underline"></i></button>
+    <button class="fmt-btn" data-command="strikeThrough" title="취소선"><i class="fa-solid fa-strikethrough"></i></button>
+    <div class="fmt-divider"></div>
+    <button class="fmt-btn" data-command="hiliteColor" data-value="#fef08a" title="노란 형광펜"><i class="fa-solid fa-highlighter" style="color: #eab308;"></i></button>
+    <button class="fmt-btn" data-command="hiliteColor" data-value="#bbf7d0" title="초록 형광펜"><i class="fa-solid fa-highlighter" style="color: #22c55e;"></i></button>
+    <button class="fmt-btn" data-command="hiliteColor" data-value="#fed7aa" title="주황 형광펜"><i class="fa-solid fa-highlighter" style="color: #f97316;"></i></button>
+  </div>
+
+  <!-- 이모지 선택 모달 -->
+  <div id="emoji-picker-modal" class="modal hidden">
+    <div class="modal-backdrop" id="emoji-backdrop"></div>
+    <div class="modal-content emoji-modal-content">
+      <div class="emoji-modal-header">
+        <span>노트 아이콘 선택</span>
+        <button id="btn-close-emoji" class="btn-icon"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="emoji-grid" id="emoji-grid">
+        <!-- JS로 채움 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 모바일 접속 QR 모달 -->
+  <div id="mobile-modal" class="modal hidden">
+    <div class="modal-backdrop" id="mobile-backdrop"></div>
+    <div class="modal-content mobile-modal-content">
+      <div class="mobile-modal-header">
+        <div class="modal-title-with-icon">
+          <i class="fa-solid fa-mobile-screen-button text-primary"></i>
+          <span>스마트폰 / 태블릿으로 열기</span>
+        </div>
+        <button id="btn-close-mobile" class="btn-icon"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="mobile-modal-body">
+        <div class="qr-preview-box" id="qr-preview-box">
+          <!-- QR 이미지가 동적으로 삽입됩니다 -->
+          <img id="qr-image" alt="QR Code" style="width: 180px; height: 180px; border-radius: 8px; border: 1px solid var(--border-color);" />
+        </div>
+        <p class="mobile-guide-text">스마트폰 기본 <b>카메라 앱</b>으로 위 QR 코드를 비추면 즉시 노트를 열 수 있습니다.</p>
+        
+        <div class="mobile-url-box">
+          <input type="text" id="mobile-url-input" readonly value="http://192.168.219.240:8080" />
+          <button id="btn-copy-url" class="btn-copy-url" title="주소 복사">
+            <i class="fa-regular fa-copy"></i> 복사
+          </button>
+        </div>
+
+        <div class="mobile-tips-box">
+          <div class="tip-title">💡 진짜 앱처럼 설치하는 방법:</div>
+          <div class="tip-item"><b>iPhone / iPad (Safari)</b>: 하단 [공유 버튼] <i class="fa-solid fa-arrow-up-from-bracket"></i> 클릭 ➡️ <b>[홈 화면에 추가]</b></div>
+          <div class="tip-item"><b>Galaxy / Android (Chrome)</b>: 우측 상단 [메뉴] <i class="fa-solid fa-ellipsis-vertical"></i> 클릭 ➡️ <b>[앱 설치]</b> 또는 <b>[홈 화면에 추가]</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 스크립트 로드: 로컬 파일(file://) 및 웹 서버 모두 완벽 동작 -->
+  <script src="js/bundle.js"></script>
+</body>
+</html>
