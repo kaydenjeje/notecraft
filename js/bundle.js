@@ -1120,17 +1120,19 @@
     }
 
     bindEvents() {
-      this.canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
-      this.canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
-      this.canvas.addEventListener('pointerup', (e) => this.onPointerUp(e));
-      this.canvas.addEventListener('pointercancel', (e) => this.onPointerCancel(e));
-      this.canvas.addEventListener('lostpointercapture', (e) => this.onPointerCancel(e));
+      const targetElement = this.paperContainer || this.canvas;
 
-      // Touch gesture handling: 2-finger pan (always) and 1-finger pan (in pencilOnlyMode)
-      this.canvas.addEventListener('touchstart', (e) => this.onTouchStart(e), { passive: false });
-      this.canvas.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
-      this.canvas.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
-      this.canvas.addEventListener('touchcancel', (e) => this.onTouchEnd(e), { passive: false });
+      // Pointer events for drawing (Pen / Stylus / Mouse)
+      targetElement.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+      window.addEventListener('pointermove', (e) => this.onPointerMove(e));
+      window.addEventListener('pointerup', (e) => this.onPointerUp(e));
+      window.addEventListener('pointercancel', (e) => this.onPointerCancel(e));
+
+      // Touch gesture handling: 2-finger pan (always) and 1-finger pan (in pencilOnlyMode / GoodNotes mode)
+      targetElement.addEventListener('touchstart', (e) => this.onTouchStart(e), { passive: false });
+      targetElement.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
+      targetElement.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
+      targetElement.addEventListener('touchcancel', (e) => this.onTouchEnd(e), { passive: false });
 
       // Automatically sync canvas height if note content expands
       const contentLayers = document.getElementById('note-content-layers');
@@ -1167,8 +1169,9 @@
         return;
       }
 
-      if (this.pencilOnlyMode && e.touches.length === 1 && !this.isDrawing) {
-        // In pencil-only mode, single finger touch scrolls the note paper
+      const isCanvasMode = document.body.classList.contains('mode-canvas');
+      if ((this.pencilOnlyMode || isCanvasMode) && e.touches.length === 1 && !this.isDrawing) {
+        // In pencil-only mode or GoodNotes mode, single finger touch scrolls the note paper
         this.isOneFingerPanning = true;
         this.touchStartPanY = e.touches[0].clientY;
         this.touchStartPanX = e.touches[0].clientX;
@@ -1196,12 +1199,17 @@
         return;
       }
 
-      if (this.pencilOnlyMode && this.isOneFingerPanning && e.touches.length === 1 && !this.isDrawing) {
-        e.preventDefault();
+      const isCanvasMode = document.body.classList.contains('mode-canvas');
+      if ((this.pencilOnlyMode || isCanvasMode) && this.isOneFingerPanning && e.touches.length === 1 && !this.isDrawing) {
         const currentPanY = e.touches[0].clientY;
         const currentPanX = e.touches[0].clientX;
         const deltaY = this.touchStartPanY - currentPanY;
         const deltaX = this.touchStartPanX - currentPanX;
+
+        if (isCanvasMode) {
+          // In GoodNotes mode, prevent default to ensure smooth pan
+          e.preventDefault();
+        }
 
         const viewport = document.getElementById('note-viewport');
         if (viewport) {
@@ -1266,20 +1274,57 @@
     }
 
     onPointerDown(e) {
-      if (e.button !== 0 && e.pointerType === 'mouse') return;
       if (this.isTwoFingerPanning) return;
 
-      // In Pencil Only Mode: Touch inputs (fingers/palm) do not draw strokes!
-      if (this.pencilOnlyMode && e.pointerType === 'touch') {
+      const isPen = (e.pointerType === 'pen');
+      const isMouse = (e.pointerType === 'mouse' && e.button === 0);
+      const isTouch = (e.pointerType === 'touch');
+
+      // 1. Integrated mode (mode-split) rules:
+      // - Stylus (pen): ALWAYS writes directly on canvas
+      // - Mouse: writes only if drawing tool is active (not text-cursor)
+      // - Touch (finger): NEVER draws! Passes through to focus text blocks or checkbox
+      if (document.body.classList.contains('mode-split')) {
+        if (isTouch) {
+          return; // Let finger tap fall through to focus text blocks and type with keyboard!
+        }
+        if (!isPen && !(isMouse && this.currentTool !== 'text-cursor')) {
+          return;
+        }
+      }
+
+      // 2. GoodNotes mode (mode-canvas) rules:
+      // - Stylus (pen): ALWAYS writes
+      // - Finger: NEVER draws if pencilOnlyMode is on (default true)
+      if (document.body.classList.contains('mode-canvas')) {
+        if (isTouch && this.pencilOnlyMode) {
+          return; // Finger only scrolls/pans paper, doesn't draw
+        }
+      }
+
+      // 3. Notion text mode (mode-text): Drawing disabled
+      if (document.body.classList.contains('mode-text')) {
         return;
       }
 
+      // Disallow non-drawing mouse tools
+      if (isMouse && this.currentTool === 'text-cursor') return;
+      if (!isPen && !isMouse && (isTouch && this.pencilOnlyMode)) return;
+
       if (this.isDrawing) return;
+
+      // Prevent text selection / native drag when drawing with pen/stylus
+      if (isPen || isMouse) {
+        e.preventDefault();
+        if (e.stopPropagation) e.stopPropagation();
+      }
 
       this.activePointerId = e.pointerId;
       this.isDrawing = true;
       try {
-        this.canvas.setPointerCapture(e.pointerId);
+        if (e.target && e.target.setPointerCapture) {
+          e.target.setPointerCapture(e.pointerId);
+        }
       } catch (_) {}
 
       const pos = this.getPointerPos(e);
@@ -1314,7 +1359,11 @@
       this.isDrawing = false;
       this.activePointerId = null;
       try {
-        this.canvas.releasePointerCapture(e.pointerId);
+        if (e.target && e.target.releasePointerCapture) {
+          e.target.releasePointerCapture(e.pointerId);
+        } else if (this.canvas.releasePointerCapture) {
+          this.canvas.releasePointerCapture(e.pointerId);
+        }
       } catch (_) {}
 
       if (this.currentTool !== 'eraser' && this.points.length > 0 && this.activeCanvas) {
@@ -1343,7 +1392,11 @@
       this.isDrawing = false;
       this.activePointerId = null;
       try {
-        this.canvas.releasePointerCapture(e.pointerId);
+        if (e.target && e.target.releasePointerCapture) {
+          e.target.releasePointerCapture(e.pointerId);
+        } else if (this.canvas.releasePointerCapture) {
+          this.canvas.releasePointerCapture(e.pointerId);
+        }
       } catch (_) {}
 
       if (this.activeCtx && this.activeCanvas) {

@@ -227,29 +227,31 @@
 }
 
 /* Mode-Specific Interaction Toggles */
-/* 1. Split Mode: Canvas sits on top, but lets mouse pass through unless using pen */
+/* 1. Split Mode: Integrated Mode - Editor is primary for fingers/typing, canvas overlay captures stylus */
 body.mode-split .canvas-layer {
-  pointer-events: none;
+  pointer-events: none !important;
 }
-body.mode-split.canvas-active .canvas-layer {
-  pointer-events: auto;
+body.mode-split .blocks-editor-layer {
+  pointer-events: auto !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
 }
-body.mode-split.canvas-active .blocks-editor-layer {
-  user-select: none;
+body.mode-split #note-title-input {
+  pointer-events: auto !important;
 }
 
 /* 2. Text Mode: Notion Style - Canvas is passive/invisible, editor is primary */
 body.mode-text .canvas-layer {
-  pointer-events: none;
+  pointer-events: none !important;
   opacity: 0.7;
 }
 body.mode-text .canvas-toolbar {
   display: none !important;
 }
 
-/* 3. Canvas Mode: GoodNotes Style - Drawing layer is primary */
+/* 3. Canvas Mode: GoodNotes Style - Drawing layer captures pen, blocks editor is passive */
 body.mode-canvas .canvas-layer {
-  pointer-events: auto !important;
+  pointer-events: none !important;
   z-index: 30 !important;
 }
 body.mode-canvas .blocks-editor-layer {
@@ -257,7 +259,7 @@ body.mode-canvas .blocks-editor-layer {
   user-select: none !important;
   -webkit-user-select: none !important;
 }
-body.mode-canvas .note-title-input {
+body.mode-canvas #note-title-input {
   pointer-events: none !important;
 }
 
