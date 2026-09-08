@@ -593,5 +593,15 @@
 
   <!-- 스크립트 로드: 로컬 파일(file://) 및 웹 서버 모두 완벽 동작 -->
   <script src="js/bundle.js"></script>
+  <!-- PWA 오프라인 Service Worker 등록 -->
+  <script>
+    if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then((reg) => console.log('NoteCraft Service Worker Registered:', reg.scope))
+          .catch((err) => console.log('Service Worker registration skipped:', err));
+      });
+    }
+  </script>
 </body>
 </html>

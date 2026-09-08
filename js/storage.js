@@ -111,6 +111,43 @@ export class StorageManager {
     return notes.find(n => n.id === id) || null;
   }
 
+  static getSyncQueueKey() {
+    return 'notecraft_sync_queue';
+  }
+
+  static getSyncQueue() {
+    try {
+      const raw = localStorage.getItem(this.getSyncQueueKey());
+      return raw ? JSON.parse(raw) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static saveSyncQueue(queue) {
+    try {
+      localStorage.setItem(this.getSyncQueueKey(), JSON.stringify(queue));
+    } catch (_) {}
+  }
+
+  static enqueueSync(action, data) {
+    const queue = this.getSyncQueue();
+    if (action === 'save') {
+      const existingIdx = queue.findIndex(item => item.action === 'save' && item.data.id === data.id);
+      if (existingIdx >= 0) {
+        queue[existingIdx] = { action, data, timestamp: Date.now() };
+      } else {
+        queue.push({ action, data, timestamp: Date.now() });
+      }
+    } else if (action === 'delete') {
+      const filtered = queue.filter(item => !(item.action === 'save' && item.data.id === data.id));
+      filtered.push({ action, data, timestamp: Date.now() });
+      this.saveSyncQueue(filtered);
+      return;
+    }
+    this.saveSyncQueue(queue);
+  }
+
   static saveNote(updatedNote) {
     const notes = this.getNotes();
     const index = notes.findIndex(n => n.id === updatedNote.id);
@@ -122,6 +159,7 @@ export class StorageManager {
       notes.unshift(updatedNote);
     }
     this.saveNotes(notes);
+    this.enqueueSync('save', updatedNote);
   }
 
   static createNewNote() {
@@ -147,12 +185,14 @@ export class StorageManager {
     notes.unshift(newNote);
     this.saveNotes(notes);
     this.setCurrentNoteId(newNote.id);
+    this.enqueueSync('save', newNote);
     return newNote;
   }
 
   static deleteNote(id) {
     let notes = this.getNotes();
     notes = notes.filter(n => n.id !== id);
+    this.enqueueSync('delete', { id });
     if (notes.length === 0) {
       const newNote = this.createNewNote();
       return newNote.id;

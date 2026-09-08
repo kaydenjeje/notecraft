@@ -166,6 +166,54 @@
       return notes.find(n => n.id === id) || null;
     }
 
+    static getSyncQueueKey() {
+      if (this.currentUser && this.currentUser.uid) {
+        return `notecraft_sync_queue_user_${this.currentUser.uid}`;
+      }
+      return 'notecraft_sync_queue';
+    }
+
+    static getSyncQueue() {
+      try {
+        const raw = localStorage.getItem(this.getSyncQueueKey());
+        return raw ? JSON.parse(raw) : [];
+      } catch (_) {
+        return [];
+      }
+    }
+
+    static saveSyncQueue(queue) {
+      try {
+        localStorage.setItem(this.getSyncQueueKey(), JSON.stringify(queue));
+      } catch (_) {}
+    }
+
+    static enqueueSync(action, data) {
+      const queue = this.getSyncQueue();
+      // If updating an already queued item, replace or append
+      if (action === 'save') {
+        const existingIdx = queue.findIndex(item => item.action === 'save' && item.data.id === data.id);
+        if (existingIdx >= 0) {
+          queue[existingIdx] = { action, data, timestamp: Date.now() };
+        } else {
+          queue.push({ action, data, timestamp: Date.now() });
+        }
+      } else if (action === 'delete') {
+        // Remove any pending saves for this note
+        const filtered = queue.filter(item => !(item.action === 'save' && item.data.id === data.id));
+        filtered.push({ action, data, timestamp: Date.now() });
+        this.saveSyncQueue(filtered);
+        return;
+      }
+      this.saveSyncQueue(queue);
+    }
+
+    static clearSyncQueue() {
+      try {
+        localStorage.removeItem(this.getSyncQueueKey());
+      } catch (_) {}
+    }
+
     static saveNote(updatedNote) {
       const notes = this.getNotes();
       const index = notes.findIndex(n => n.id === updatedNote.id);
@@ -178,8 +226,11 @@
       }
       this.saveNotes(notes);
 
+      // Always enqueue so changes are resilient even if offline or network fails
+      this.enqueueSync('save', updatedNote);
+
       // Trigger Cloud Firestore Sync if online
-      if (window.cloudManager && window.cloudManager.isCloudActive() && this.currentUser) {
+      if (window.cloudManager && window.cloudManager.isCloudActive() && this.currentUser && navigator.onLine) {
         window.cloudManager.syncNoteToFirestore(this.currentUser.uid, updatedNote);
       }
     }
@@ -208,7 +259,9 @@
       this.saveNotes(notes);
       this.setCurrentNoteId(newNote.id);
 
-      if (window.cloudManager && window.cloudManager.isCloudActive() && this.currentUser) {
+      this.enqueueSync('save', newNote);
+
+      if (window.cloudManager && window.cloudManager.isCloudActive() && this.currentUser && navigator.onLine) {
         window.cloudManager.syncNoteToFirestore(this.currentUser.uid, newNote);
       }
 
@@ -224,7 +277,9 @@
       }
       this.saveNotes(notes);
 
-      if (window.cloudManager && window.cloudManager.isCloudActive() && this.currentUser) {
+      this.enqueueSync('delete', { id });
+
+      if (window.cloudManager && window.cloudManager.isCloudActive() && this.currentUser && navigator.onLine) {
         window.cloudManager.deleteNoteFromFirestore(this.currentUser.uid, id);
       }
 
@@ -2168,9 +2223,28 @@
         }
         this.auth = firebase.auth();
         this.db = firebase.firestore();
-        this.isInitialized = true;
 
-        this.updateStatus(true, '클라우드 동기화 준비 완료 (Google)');
+        // Enable offline persistence in Firestore SDK (fallback silently if multi-tab)
+        if (this.db.enablePersistence) {
+          this.db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
+            if (err.code === 'failed-precondition') {
+              console.warn('Firestore persistence failed: Multiple tabs open');
+            } else if (err.code === 'unimplemented') {
+              console.warn('Firestore persistence not supported by browser');
+            }
+          });
+        }
+
+        this.isInitialized = true;
+        this.updateStatus(navigator.onLine, navigator.onLine ? '클라우드 동기화 준비 완료 (Google)' : '오프라인 (로컬 보관)');
+
+        // Listen for online / offline network changes
+        window.addEventListener('online', () => {
+          this.handleOnlineRecovery();
+        });
+        window.addEventListener('offline', () => {
+          this.handleOffline();
+        });
 
         this.auth.onAuthStateChanged(async (user) => {
           if (user) {
@@ -2180,6 +2254,67 @@
       } catch (err) {
         console.error('Firebase Init Error:', err);
         this.updateStatus(false, 'Firebase 연결 실패');
+      }
+    }
+
+    handleOffline() {
+      this.updateStatus(false, '오프라인 (로컬 저장 중)');
+      if (this.app && this.app.updateSaveIndicator) {
+        this.app.updateSaveIndicator('offline');
+      }
+    }
+
+    async handleOnlineRecovery() {
+      this.updateStatus(true, '네트워크 연결됨. 동기화 중...');
+      if (this.app && this.app.updateSaveIndicator) {
+        this.app.updateSaveIndicator('syncing');
+      }
+
+      if (this.isCloudActive() && this.currentUser) {
+        await this.processSyncQueue(this.currentUser.uid);
+      } else {
+        if (this.app && this.app.updateSaveIndicator) {
+          this.app.updateSaveIndicator('synced');
+        }
+      }
+    }
+
+    async processSyncQueue(uid) {
+      if (!this.db || !uid) return;
+      const queue = StorageManager.getSyncQueue();
+      if (!queue || queue.length === 0) {
+        if (this.app && this.app.updateSaveIndicator) {
+          this.app.updateSaveIndicator('synced');
+        }
+        return;
+      }
+
+      if (this.app && this.app.updateSaveIndicator) {
+        this.app.updateSaveIndicator('syncing');
+      }
+
+      const remainingQueue = [];
+      for (const item of queue) {
+        try {
+          if (item.action === 'save') {
+            await this.db.collection('users').doc(uid).collection('notes').doc(item.data.id).set(item.data, { merge: true });
+          } else if (item.action === 'delete') {
+            await this.db.collection('users').doc(uid).collection('notes').doc(item.data.id).delete();
+          }
+        } catch (err) {
+          console.error('Failed to sync queued item:', item, err);
+          remainingQueue.push(item);
+        }
+      }
+
+      StorageManager.saveSyncQueue(remainingQueue);
+
+      if (this.app && this.app.updateSaveIndicator) {
+        if (remainingQueue.length === 0) {
+          this.app.updateSaveIndicator('synced');
+        } else {
+          this.app.updateSaveIndicator('offline');
+        }
       }
     }
 
@@ -2212,6 +2347,9 @@
       this.updateStatus(true, `계정 로그인됨 (${user.email})`);
 
       if (this.isInitialized && user.uid) {
+        // First sync any local offline changes to cloud
+        await this.processSyncQueue(user.uid);
+        // Then load fresh notes
         await this.loadNotesFromFirestore(user.uid);
       } else if (shouldReloadDocs) {
         this.app.sidebar.render();
@@ -2305,8 +2443,17 @@
       if (!this.db || !uid || !note) return;
       try {
         await this.db.collection('users').doc(uid).collection('notes').doc(note.id).set(note, { merge: true });
+        // Clean queue if successful
+        const queue = StorageManager.getSyncQueue().filter(item => !(item.action === 'save' && item.data.id === note.id));
+        StorageManager.saveSyncQueue(queue);
+        if (this.app && this.app.updateSaveIndicator) {
+          this.app.updateSaveIndicator('synced');
+        }
       } catch (err) {
-        console.error('Firestore Sync Error:', err);
+        console.error('Firestore Sync Error (queued for later):', err);
+        if (this.app && this.app.updateSaveIndicator) {
+          this.app.updateSaveIndicator('offline');
+        }
       }
     }
 
@@ -2314,8 +2461,10 @@
       if (!this.db || !uid || !noteId) return;
       try {
         await this.db.collection('users').doc(uid).collection('notes').doc(noteId).delete();
+        const queue = StorageManager.getSyncQueue().filter(item => !(item.action === 'delete' && item.data.id === noteId));
+        StorageManager.saveSyncQueue(queue);
       } catch (err) {
-        console.error('Firestore Delete Error:', err);
+        console.error('Firestore Delete Error (queued for later):', err);
       }
     }
   }
@@ -2399,6 +2548,13 @@
       // Initialize Firebase Cloud & Google Auth
       this.cloud = new FirebaseCloudManager(this);
       window.cloudManager = this.cloud;
+
+      // Initialize network & save indicator status
+      if (!navigator.onLine) {
+        this.updateSaveIndicator('offline');
+      } else {
+        this.updateSaveIndicator('normal');
+      }
 
       const initialId = StorageManager.getCurrentNoteId();
       this.switchNote(initialId);
@@ -2693,9 +2849,29 @@
       this.updatedAtLabel.textContent = `최근 수정: 오늘 ${timeString}`;
     }
 
+    updateSaveIndicator(status) {
+      if (!this.saveStatus) return;
+      this.saveStatus.classList.remove('saving', 'offline', 'syncing', 'synced');
+
+      if (status === 'saving') {
+        this.saveStatus.classList.add('saving');
+        this.saveStatus.innerHTML = '<i class="fa-solid fa-arrows-rotate fa-spin"></i><span>로컬 저장 중...</span>';
+      } else if (status === 'offline') {
+        this.saveStatus.classList.add('offline');
+        this.saveStatus.innerHTML = '<i class="fa-solid fa-cloud-slash"></i><span>오프라인 (로컬 보관됨)</span>';
+      } else if (status === 'syncing') {
+        this.saveStatus.classList.add('syncing');
+        this.saveStatus.innerHTML = '<i class="fa-solid fa-arrows-rotate fa-spin"></i><span>클라우드 동기화 중...</span>';
+      } else if (status === 'synced') {
+        this.saveStatus.classList.add('synced');
+        this.saveStatus.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i><span>동기화 완료</span>';
+      } else {
+        this.saveStatus.innerHTML = '<i class="fa-solid fa-check"></i><span>저장됨</span>';
+      }
+    }
+
     triggerAutoSave() {
-      this.saveStatus.innerHTML = '<i class="fa-solid fa-arrows-rotate fa-spin"></i><span>저장 중...</span>';
-      this.saveStatus.classList.add('saving');
+      this.updateSaveIndicator('saving');
 
       clearTimeout(this.saveTimeout);
       this.saveTimeout = setTimeout(() => {
@@ -2713,8 +2889,19 @@
 
       StorageManager.saveNote(this.currentNote);
 
-      this.saveStatus.innerHTML = '<i class="fa-solid fa-check"></i><span>저장됨</span>';
-      this.saveStatus.classList.remove('saving');
+      if (!navigator.onLine) {
+        this.updateSaveIndicator('offline');
+      } else if (this.cloud && this.cloud.isCloudActive()) {
+        const queue = StorageManager.getSyncQueue();
+        if (queue.length > 0) {
+          this.updateSaveIndicator('syncing');
+        } else {
+          this.updateSaveIndicator('synced');
+        }
+      } else {
+        this.updateSaveIndicator('normal');
+      }
+
       this.updateTimeLabel(this.currentNote.updatedAt);
     }
   }

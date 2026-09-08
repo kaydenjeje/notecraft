@@ -493,14 +493,36 @@ button {
 .save-indicator {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   font-size: 0.8rem;
   color: var(--text-muted);
-  padding-right: 8px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-sidebar);
+  transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .save-indicator.saving {
   color: var(--accent-primary);
+  background-color: var(--accent-light);
+}
+
+.save-indicator.offline {
+  color: var(--warning);
+  background-color: rgba(245, 158, 11, 0.12);
+  font-weight: 500;
+}
+
+.save-indicator.syncing {
+  color: var(--accent-primary);
+  background-color: var(--accent-light);
+  font-weight: 500;
+}
+
+.save-indicator.synced {
+  color: var(--success);
+  background-color: rgba(16, 185, 129, 0.12);
 }
 
 /* ==========================================================================
