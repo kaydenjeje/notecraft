@@ -82,25 +82,53 @@ const WELCOME_NOTE = {
 };
 
 export class StorageManager {
+  static currentUser = null;
+
+  static setCurrentUser(user) {
+    this.currentUser = user;
+  }
+
+  static getStorage() {
+    return (this.currentUser && this.currentUser.uid) ? localStorage : sessionStorage;
+  }
+
+  static getNotesKey() {
+    if (this.currentUser && this.currentUser.uid) {
+      return `${STORAGE_KEYS.NOTES}_user_${this.currentUser.uid}`;
+    }
+    return STORAGE_KEYS.NOTES;
+  }
+
+  static getCurrentIdKey() {
+    if (this.currentUser && this.currentUser.uid) {
+      return `${STORAGE_KEYS.CURRENT_ID}_user_${this.currentUser.uid}`;
+    }
+    return STORAGE_KEYS.CURRENT_ID;
+  }
+
   static getNotes() {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.NOTES);
+      const storage = this.getStorage();
+      const key = this.getNotesKey();
+      const data = storage.getItem(key);
       if (!data) {
         // First visit: save initial welcome guide
         const initial = [WELCOME_NOTE];
-        localStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(initial));
+        storage.setItem(key, JSON.stringify(initial));
         return initial;
       }
       return JSON.parse(data);
     } catch (e) {
-      console.error('Failed to load notes from localStorage', e);
+      console.error('Failed to load notes from storage', e);
       return [WELCOME_NOTE];
     }
   }
 
   static saveNotes(notes) {
     try {
-      localStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(notes));
+      const storage = this.getStorage();
+      const key = this.getNotesKey();
+      storage.setItem(key, JSON.stringify(notes));
     } catch (e) {
       console.error('Failed to save notes', e);
     }
@@ -112,12 +140,16 @@ export class StorageManager {
   }
 
   static getSyncQueueKey() {
+    if (this.currentUser && this.currentUser.uid) {
+      return `notecraft_sync_queue_user_${this.currentUser.uid}`;
+    }
     return 'notecraft_sync_queue';
   }
 
   static getSyncQueue() {
     try {
-      const raw = localStorage.getItem(this.getSyncQueueKey());
+      const storage = this.getStorage();
+      const raw = storage.getItem(this.getSyncQueueKey());
       return raw ? JSON.parse(raw) : [];
     } catch (_) {
       return [];
@@ -126,7 +158,8 @@ export class StorageManager {
 
   static saveSyncQueue(queue) {
     try {
-      localStorage.setItem(this.getSyncQueueKey(), JSON.stringify(queue));
+      const storage = this.getStorage();
+      storage.setItem(this.getSyncQueueKey(), JSON.stringify(queue));
     } catch (_) {}
   }
 
@@ -202,14 +235,18 @@ export class StorageManager {
   }
 
   static getCurrentNoteId() {
-    const id = localStorage.getItem(STORAGE_KEYS.CURRENT_ID);
+    const storage = this.getStorage();
+    const key = this.getCurrentIdKey();
+    const id = storage.getItem(key);
     if (id && this.getNoteById(id)) return id;
     const notes = this.getNotes();
     return notes[0] ? notes[0].id : null;
   }
 
   static setCurrentNoteId(id) {
-    localStorage.setItem(STORAGE_KEYS.CURRENT_ID, id);
+    const storage = this.getStorage();
+    const key = this.getCurrentIdKey();
+    storage.setItem(key, id);
   }
 
   static getTheme() {

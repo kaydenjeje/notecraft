@@ -108,17 +108,13 @@
         </div>
 
         <div class="header-center">
-          <!-- 모드 전환 탭 (노션 텍스트 / 굿노트 필기 / 둘 다) -->
+          <!-- 모드 전환 탭 (노션 텍스트 / 굿노트 필기) -->
           <div class="view-mode-selector">
-            <button class="mode-btn active" data-mode="split" title="텍스트와 드로잉 동시 사용">
-              <i class="fa-solid fa-layer-group"></i>
-              <span class="mode-label">통합 모드</span>
-            </button>
-            <button class="mode-btn" data-mode="text" title="노션 스타일 텍스트 전용">
+            <button class="mode-btn active" data-mode="text" title="노션 모드 (텍스트 및 블록 편집)">
               <i class="fa-solid fa-align-left"></i>
               <span class="mode-label">노션 모드</span>
             </button>
-            <button class="mode-btn" data-mode="canvas" title="굿노트 스타일 펜 필기 전용">
+            <button class="mode-btn" data-mode="canvas" title="굿노트 모드 (펜 & 필기 전용)">
               <i class="fa-solid fa-pen-nib"></i>
               <span class="mode-label">굿노트 모드</span>
             </button>
@@ -129,7 +125,7 @@
           <!-- 클라우드 연동 상태 및 구글 로그인 영역 -->
           <div class="cloud-auth-widget" id="cloud-auth-widget">
             <!-- 비로그인 상태: 구글 로그인 버튼 -->
-            <button id="btn-google-login" class="btn-google-auth" title="Google 로그인">
+            <button id="btn-google-login" class="btn-google-auth" title="Google 로그인 (클라우드 영구 저장 / 비로그인 시 종료 시 초기화)">
               <i class="fa-brands fa-google"></i>
               <span class="auth-btn-label">로그인</span>
             </button>

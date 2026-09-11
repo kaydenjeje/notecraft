@@ -92,6 +92,12 @@
       this.currentUser = user;
     }
 
+    static getStorage() {
+      // Logged in: localStorage (persistent & synced)
+      // Guest (not logged in): sessionStorage (cleared upon session/browser exit)
+      return (this.currentUser && this.currentUser.uid) ? localStorage : sessionStorage;
+    }
+
     static getNotesKey() {
       if (this.currentUser && this.currentUser.uid) {
         return `${STORAGE_KEYS.NOTES}_user_${this.currentUser.uid}`;
@@ -108,8 +114,9 @@
 
     static getNotes() {
       try {
+        const storage = this.getStorage();
         const key = this.getNotesKey();
-        const data = localStorage.getItem(key);
+        const data = storage.getItem(key);
         if (!data) {
           // If logged-in user, create personalized initial note
           const initial = this.currentUser ? [
@@ -142,7 +149,7 @@
               updatedAt: Date.now()
             }
           ] : [WELCOME_NOTE];
-          localStorage.setItem(key, JSON.stringify(initial));
+          storage.setItem(key, JSON.stringify(initial));
           return initial;
         }
         return JSON.parse(data);
@@ -154,8 +161,9 @@
 
     static saveNotes(notes) {
       try {
+        const storage = this.getStorage();
         const key = this.getNotesKey();
-        localStorage.setItem(key, JSON.stringify(notes));
+        storage.setItem(key, JSON.stringify(notes));
       } catch (e) {
         console.error('Failed to save notes', e);
       }
@@ -175,7 +183,8 @@
 
     static getSyncQueue() {
       try {
-        const raw = localStorage.getItem(this.getSyncQueueKey());
+        const storage = this.getStorage();
+        const raw = storage.getItem(this.getSyncQueueKey());
         return raw ? JSON.parse(raw) : [];
       } catch (_) {
         return [];
@@ -184,7 +193,8 @@
 
     static saveSyncQueue(queue) {
       try {
-        localStorage.setItem(this.getSyncQueueKey(), JSON.stringify(queue));
+        const storage = this.getStorage();
+        storage.setItem(this.getSyncQueueKey(), JSON.stringify(queue));
       } catch (_) {}
     }
 
@@ -210,7 +220,8 @@
 
     static clearSyncQueue() {
       try {
-        localStorage.removeItem(this.getSyncQueueKey());
+        const storage = this.getStorage();
+        storage.removeItem(this.getSyncQueueKey());
       } catch (_) {}
     }
 
@@ -287,16 +298,18 @@
     }
 
     static getCurrentNoteId() {
+      const storage = this.getStorage();
       const key = this.getCurrentIdKey();
-      const id = localStorage.getItem(key);
+      const id = storage.getItem(key);
       if (id && this.getNoteById(id)) return id;
       const notes = this.getNotes();
       return notes[0] ? notes[0].id : null;
     }
 
     static setCurrentNoteId(id) {
+      const storage = this.getStorage();
       const key = this.getCurrentIdKey();
-      localStorage.setItem(key, id);
+      storage.setItem(key, id);
     }
 
     static getTheme() {
@@ -346,6 +359,14 @@
       });
     }
   }
+
+  // Purge legacy guest data from localStorage so non-logged-in users strictly use sessionStorage
+  // and reset upon session termination
+  try {
+    localStorage.removeItem(STORAGE_KEYS.NOTES);
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_ID);
+    localStorage.removeItem('notecraft_sync_queue');
+  } catch (_) {}
 
   // =========================================================================
   // 2. Notion-Style Block Editor
@@ -1335,31 +1356,19 @@
       const isMouse = (e.pointerType === 'mouse' && e.button === 0);
       const isTouch = (e.pointerType === 'touch');
 
-      // 1. Integrated mode (mode-split) rules:
-      // - Stylus (pen): ALWAYS writes directly on canvas
-      // - Mouse: writes only if drawing tool is active (not text-cursor)
-      // - Touch (finger): NEVER draws! Passes through to focus text blocks or checkbox
-      if (document.body.classList.contains('mode-split')) {
-        if (isTouch) {
-          return; // Let finger tap fall through to focus text blocks and type with keyboard!
-        }
-        if (!isPen && !(isMouse && this.currentTool !== 'text-cursor')) {
-          return;
-        }
+      // 1. Notion text mode (mode-text): Drawing disabled completely
+      if (document.body.classList.contains('mode-text')) {
+        return;
       }
 
       // 2. GoodNotes mode (mode-canvas) rules:
       // - Stylus (pen): ALWAYS writes
-      // - Finger: NEVER draws if pencilOnlyMode is on (default true)
+      // - Mouse: writes only if drawing tool is active (not text-cursor)
+      // - Finger: scrolls/pans paper if pencilOnlyMode is on (default true)
       if (document.body.classList.contains('mode-canvas')) {
         if (isTouch && this.pencilOnlyMode) {
           return; // Finger only scrolls/pans paper, doesn't draw
         }
-      }
-
-      // 3. Notion text mode (mode-text): Drawing disabled
-      if (document.body.classList.contains('mode-text')) {
-        return;
       }
 
       // Disallow non-drawing mouse tools
@@ -2362,11 +2371,14 @@
       this.currentUser = null;
       StorageManager.setCurrentUser(null);
       localStorage.removeItem('notecraft_active_google_user');
+      try {
+        sessionStorage.clear();
+      } catch (_) {}
 
       if (this.btnGoogleLogin) this.btnGoogleLogin.classList.remove('hidden');
       if (this.userProfileChip) this.userProfileChip.classList.add('hidden');
 
-      this.updateStatus(false, '로그아웃됨 (기본 모드)');
+      this.updateStatus(false, '비로그인 모드 (접속 종료 시 초기화)');
 
       this.app.sidebar.render();
       const currentId = StorageManager.getCurrentNoteId();
@@ -2603,21 +2615,18 @@
           modeButtons.forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
 
-          const mode = btn.getAttribute('data-mode');
+          const mode = btn.getAttribute('data-mode') || 'text';
           document.body.classList.remove('mode-split', 'mode-text', 'mode-canvas');
           document.body.classList.add(`mode-${mode}`);
 
-          if (mode === 'text') {
-            document.body.classList.remove('canvas-active');
-            this.enableTextEditing(true);
-          } else if (mode === 'canvas') {
+          if (mode === 'canvas') {
             // GoodNotes Mode: Definitively disable text editing and blur all inputs
             // to prevent tablet OS (Apple Scribble / Samsung S-Pen) from converting handwriting to text
             document.body.classList.add('canvas-active');
             this.blurAndDisableTextEditing();
           } else {
-            // Split mode
-            document.body.classList.add('canvas-active');
+            // Notion Text Mode (Default)
+            document.body.classList.remove('canvas-active');
             this.enableTextEditing(true);
           }
 
@@ -2628,8 +2637,11 @@
         });
       });
 
-      document.body.classList.add('mode-split');
-      document.body.classList.add('canvas-active');
+      // Default to Notion Mode (mode-text)
+      document.body.classList.remove('mode-split', 'mode-canvas');
+      document.body.classList.add('mode-text');
+      document.body.classList.remove('canvas-active');
+      this.enableTextEditing(true);
     }
 
     blurAndDisableTextEditing() {

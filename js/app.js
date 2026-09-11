@@ -82,20 +82,22 @@ class NoteCraftApp {
         modeButtons.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
 
-        const mode = btn.getAttribute('data-mode');
+        const mode = btn.getAttribute('data-mode') || 'text';
         document.body.classList.remove('mode-split', 'mode-text', 'mode-canvas');
         document.body.classList.add(`mode-${mode}`);
 
-        if (mode === 'text') {
-          document.body.classList.remove('canvas-active');
-        } else if (mode === 'canvas') {
+        if (mode === 'canvas') {
           document.body.classList.add('canvas-active');
+        } else {
+          document.body.classList.remove('canvas-active');
         }
       });
     });
 
-    // Default to split mode
-    document.body.classList.add('mode-split');
+    // Default to Notion Mode (mode-text)
+    document.body.classList.remove('mode-split', 'mode-canvas');
+    document.body.classList.add('mode-text');
+    document.body.classList.remove('canvas-active');
   }
 
   setupHeaderEvents() {

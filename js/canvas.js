@@ -259,31 +259,19 @@ export class DrawingCanvas {
     const isMouse = (e.pointerType === 'mouse' && e.button === 0);
     const isTouch = (e.pointerType === 'touch');
 
-    // 1. Integrated mode (mode-split) rules:
-    // - Stylus (pen): ALWAYS writes directly on canvas
-    // - Mouse: writes only if drawing tool is active (not text-cursor)
-    // - Touch (finger): NEVER draws! Passes through to focus text blocks or checkbox
-    if (document.body.classList.contains('mode-split')) {
-      if (isTouch) {
-        return; // Let finger tap fall through to focus text blocks and type with keyboard!
-      }
-      if (!isPen && !(isMouse && this.currentTool !== 'text-cursor')) {
-        return;
-      }
+    // 1. Notion text mode (mode-text): Drawing disabled completely
+    if (document.body.classList.contains('mode-text')) {
+      return;
     }
 
     // 2. GoodNotes mode (mode-canvas) rules:
     // - Stylus (pen): ALWAYS writes
-    // - Finger: NEVER draws if pencilOnlyMode is on (default true)
+    // - Mouse: writes only if drawing tool is active (not text-cursor)
+    // - Finger: scrolls/pans paper if pencilOnlyMode is on (default true)
     if (document.body.classList.contains('mode-canvas')) {
       if (isTouch && this.pencilOnlyMode) {
         return; // Finger only scrolls/pans paper, doesn't draw
       }
-    }
-
-    // 3. Notion text mode (mode-text): Drawing disabled
-    if (document.body.classList.contains('mode-text')) {
-      return;
     }
 
     // Disallow non-drawing mouse tools
